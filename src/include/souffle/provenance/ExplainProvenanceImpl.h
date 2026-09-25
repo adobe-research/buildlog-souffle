@@ -54,6 +54,8 @@ public:
     }
 
     void setup() override {
+        setupTypes();
+
         // for each clause, store a mapping from the head relation name to body relation names
         for (auto& rel : prog.getAllRelations()) {
             std::string name = rel->getName();

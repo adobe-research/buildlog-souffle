@@ -1,0 +1,10 @@
+explain out_relation("some text")
+explain located("origin", 0)
+explain unplaced("none")
+explain second(2)
+explain leaf("eq")
+explain leaf("not")
+explain leaf("at")
+explain leaf("paint")
+explain leaf("top")
+exit

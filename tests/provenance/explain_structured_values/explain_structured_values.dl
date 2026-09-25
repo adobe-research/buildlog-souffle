@@ -1,0 +1,73 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026, The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+//
+// explain_structured_values.dl
+// The explain interface prints record and ADT values structurally, rather
+// than as opaque record references (or aborting, for ADTs; see #2521).
+//
+
+.pragma "provenance" "explain"
+
+// #2521: ADT over a subtype of symbol
+.type my_symbol <: symbol
+.type my_adt = Cons { x: my_symbol }
+.decl A(u: my_symbol, cap: my_adt)
+A("some text", $Cons("some text")).
+.decl out_relation(u: my_symbol)
+out_relation(u) :- A(u, $Cons(u)).
+
+// records, including nested, nil, and non-symbol fields
+.type Point = [x: number, y: float]
+.type Named = [name: symbol, at: Point, id: unsigned]
+.type List = [head: number, tail: List]
+
+.decl named(n: Named)
+named(["origin", [0, 0.5], 7]).
+named(["none", nil, 8]).
+
+.decl list(l: List)
+list([1, [2, nil]]).
+
+.decl located(name: symbol, x: number)
+located(name, x) :- named([name, [x, _], _]).
+
+.decl unplaced(name: symbol)
+unplaced(name) :- named([name, nil, _]).
+
+.decl second(x: number)
+second(x) :- list([_, [x, _]]).
+
+// ADTs: multi-argument, single-argument, nullary and enum branches,
+// nesting, and records inside ADTs
+.type Color = Red {} | Green {}
+.type Cond = Eq {k: symbol, v: symbol}
+           | Not {c: Cond}
+           | At {p: Point}
+           | Paint {c: Color}
+           | Top {}
+
+.decl cond(n: symbol, c: Cond)
+cond("eq", $Eq("cpu", "x86")).
+cond("not", $Not($Eq("os", "linux"))).
+cond("at", $At([1, 2.5])).
+cond("paint", $Paint($Green())).
+cond("top", $Top()).
+
+.decl sub(n: symbol, c: Cond)
+sub(n, c) :- cond(n, c).
+sub(n, c) :- sub(n, $Not(c)).
+
+.decl color(n: symbol, c: Color)
+color(n, c) :- sub(n, $Paint(c)).
+
+.decl leaf(n: symbol)
+leaf(n) :- sub(n, $Eq(_, _)).
+leaf(n) :- sub(n, $At(_)).
+leaf(n) :- color(n, _).
+leaf(n) :- sub(n, $Top()).
+
+.output out_relation, located, unplaced, second, leaf

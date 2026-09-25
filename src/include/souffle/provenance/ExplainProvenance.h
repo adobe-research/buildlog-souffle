@@ -20,7 +20,9 @@
 #include "souffle/SouffleInterface.h"
 #include "souffle/SymbolTable.h"
 #include "souffle/utility/MiscUtil.h"
+#include "souffle/utility/StreamUtil.h"
 #include "souffle/utility/StringUtil.h"
+#include "souffle/utility/json11.h"
 #include "souffle/utility/tinyformat.h"
 #include <algorithm>
 #include <cassert>
@@ -193,6 +195,9 @@ protected:
     SouffleProgram& prog;
     SymbolTable& symTable;
 
+    /** Record and ADT type information, in the same format as the "types" IO parameter */
+    json11::Json types;
+
     std::vector<RamDomain> argsToNums(
             const std::string& relName, const std::vector<std::string>& args) const {
         std::vector<RamDomain> nums;
@@ -222,21 +227,103 @@ protected:
         }
 
         for (std::size_t i = 0; i < nums.size(); i++) {
-            args.push_back(valueShow(rel->getAttrType(i)[0], nums[i]));
+            args.push_back(valueShow(rel->getAttrType(i), nums[i]));
         }
 
         return args;
     }
 
-    std::string valueShow(const char type, const RamDomain value) const {
-        switch (type) {
+    /**
+     * Load the record and ADT type information that the provenance translation
+     * stores in the provenance.@types relation, if present.
+     **/
+    void setupTypes() {
+        auto rel = prog.getRelation("provenance.@types");
+        if (rel == nullptr) {
+            return;
+        }
+        for (auto& tuple : *rel) {
+            std::string json;
+            tuple >> json;
+            std::string err;
+            types = json11::Json::parse(json, err);
+        }
+    }
+
+    /**
+     * Show a value of the given type qualifier (e.g. "i:number", "r:R", "+:A").
+     **/
+    std::string valueShow(const std::string& type, const RamDomain value) const {
+        switch (type[0]) {
             case 'i': return tfm::format("%d", ramBitCast<RamSigned>(value));
             case 'u': return tfm::format("%d", ramBitCast<RamUnsigned>(value));
             case 'f': return tfm::format("%f", ramBitCast<RamFloat>(value));
             case 's': return tfm::format("\"%s\"", symTable.decode(value));
-            case 'r': return tfm::format("record #%d", value);
+            case 'r': return recordShow(type, value);
+            case '+': return adtShow(type, value);
             default: fatal("unhandled type attr code");
         }
+    }
+
+    std::string recordShow(const std::string& type, const RamDomain value) const {
+        auto&& recordInfo = types["records"][type];
+        if (recordInfo.is_null()) {
+            return tfm::format("record #%d", value);
+        }
+        if (value == 0) {
+            return "nil";
+        }
+
+        auto&& fieldTypes = recordInfo["types"].array_items();
+        const RamDomain* fields = prog.getRecordTable().unpack(value, fieldTypes.size());
+
+        std::vector<std::string> shown;
+        for (std::size_t i = 0; i < fieldTypes.size(); ++i) {
+            shown.push_back(valueShow(fieldTypes[i].string_value(), fields[i]));
+        }
+        return tfm::format("[%s]", join(shown, ", "));
+    }
+
+    std::string adtShow(const std::string& type, const RamDomain value) const {
+        auto&& adtInfo = types["ADTs"][type];
+        if (adtInfo.is_null()) {
+            return tfm::format("adt #%d", value);
+        }
+
+        // An ADT value is encoded in one of three ways (see WriteStream::outputADT):
+        //   branchID                    when the ADT is an enumeration,
+        //   [branchID, arg]             when the branch has a single argument,
+        //   [branchID, [branch_args]]   otherwise.
+        RamDomain branchId = value;
+        const RamDomain* branchArgs = nullptr;
+        json11::Json branchInfo;
+        json11::Json::array branchTypes;
+
+        if (adtInfo["enum"].bool_value()) {
+            branchInfo = adtInfo["branches"][branchId];
+            branchTypes = branchInfo["types"].array_items();
+        } else {
+            const RamDomain* tuple = prog.getRecordTable().unpack(value, 2);
+            branchId = tuple[0];
+            branchInfo = adtInfo["branches"][branchId];
+            branchTypes = branchInfo["types"].array_items();
+            if (branchTypes.size() > 1) {
+                branchArgs = prog.getRecordTable().unpack(tuple[1], branchTypes.size());
+            } else {
+                branchArgs = &tuple[1];
+            }
+        }
+
+        std::string result = "$" + branchInfo["name"].string_value();
+        if (branchTypes.empty()) {
+            return result;
+        }
+
+        std::vector<std::string> shown;
+        for (std::size_t i = 0; i < branchTypes.size(); ++i) {
+            shown.push_back(valueShow(branchTypes[i].string_value(), branchArgs[i]));
+        }
+        return tfm::format("%s(%s)", result, join(shown, ", "));
     }
 
     RamDomain valueRead(const char type, const std::string& value) const {
