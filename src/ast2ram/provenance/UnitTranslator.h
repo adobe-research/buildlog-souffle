@@ -67,6 +67,11 @@ private:
 
     std::string getInfoRelationName(const ast::Clause* clause) const;
 
+    /** Info relation holding record and ADT type information for the explain interface. Unlike
+     * temporary relations, its name must not start with "@" so that it is visible at runtime. */
+    static constexpr const char* TYPES_RELATION_NAME = "provenance.@types";
+    Own<ram::Statement> generateTypesInfo(const ast::TranslationUnit& translationUnit) const;
+
     Own<ram::ExistenceCheck> makeRamAtomExistenceCheck(const ast::Atom* atom,
             const std::map<std::size_t, std::string>& idToVarName, ValueIndex& valueIndex) const;
     Own<ram::SubroutineReturn> makeRamReturnTrue() const;

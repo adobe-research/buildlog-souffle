@@ -19,6 +19,7 @@
 #include "ast/BinaryConstraint.h"
 #include "ast/Clause.h"
 #include "ast/Constraint.h"
+#include "ast/transform/IOAttributes.h"
 #include "ast/utility/Utils.h"
 #include "ast/utility/Visitor.h"
 #include "ast2ram/provenance/SubproofGenerator.h"
@@ -61,8 +62,11 @@ Own<ram::Sequence> UnitTranslator::generateProgram(const ast::TranslationUnit& t
     // Create info clauses
     auto infoClauses = generateInfoClauses(context->getProgram());
 
+    // Record the program's record/ADT type information for the explain interface
+    auto typesInfo = generateTypesInfo(translationUnit);
+
     // Combine into a single ram program
-    ramProgram = mk<ram::Sequence>(std::move(ramProgram), std::move(infoClauses));
+    ramProgram = mk<ram::Sequence>(std::move(ramProgram), std::move(infoClauses), std::move(typesInfo));
 
     // Add subroutines for each clause
     addProvenanceClauseSubroutines(context->getProgram());
@@ -89,6 +93,16 @@ Own<ram::Relation> UnitTranslator::createRamRelation(const ast::Relation* baseRe
 
     return mk<ram::Relation>(ramRelationName, arity + 2, auxiliaryArity + 2, attributeNames,
             attributeTypeQualifiers, representation);
+}
+
+Own<ram::Statement> UnitTranslator::generateTypesInfo(const ast::TranslationUnit& translationUnit) const {
+    json11::Json types = json11::Json::object{
+            {"records", ast::transform::IOAttributesTransformer::getRecordsTypes(translationUnit)},
+            {"ADTs", ast::transform::IOAttributesTransformer::getAlgebraicDataTypes(translationUnit)}};
+
+    VecOwn<ram::Expression> factArguments;
+    factArguments.push_back(mk<ram::StringConstant>(types.dump()));
+    return mk<ram::Query>(mk<ram::Insert>(TYPES_RELATION_NAME, std::move(factArguments)));
 }
 
 std::string UnitTranslator::getInfoRelationName(const ast::Clause* clause) const {
@@ -139,6 +153,10 @@ VecOwn<ram::Relation> UnitTranslator::createRamRelations(const std::vector<std::
         ramRelations.push_back(mk<ram::Relation>(getInfoRelationName(clause), attributeNames.size(), 0,
                 attributeNames, attributeTypeQualifiers, RelationRepresentation::INFO));
     }
+
+    // Type information relation
+    ramRelations.push_back(mk<ram::Relation>(TYPES_RELATION_NAME, 1, 0, std::vector<std::string>{"types"},
+            std::vector<std::string>{"s:symbol"}, RelationRepresentation::INFO));
 
     return ramRelations;
 }

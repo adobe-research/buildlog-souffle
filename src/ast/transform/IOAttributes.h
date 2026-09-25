@@ -162,6 +162,7 @@ private:
         return node->getQualifiedName().toString();
     }
 
+public:
     /**
      * Get sum types info for IO.
      * If they don't exists - create them.
@@ -170,7 +171,7 @@ private:
      * {"ADTs" : {ADT_NAME : {"branches" : [branch..]}, {"arity": ...}}}
      * branch = {{"types": [types ...]}, ["name": ...]}
      */
-    json11::Json getAlgebraicDataTypes(TranslationUnit& translationUnit) const {
+    static json11::Json getAlgebraicDataTypes(const TranslationUnit& translationUnit) {
         static json11::Json sumTypesInfo;
 
         // Check if the types were already constructed
@@ -178,7 +179,7 @@ private:
             return sumTypesInfo;
         }
 
-        Program& program = translationUnit.getProgram();
+        const Program& program = translationUnit.getProgram();
         auto& typeEnv = translationUnit.getAnalysis<analysis::TypeEnvironmentAnalysis>().getTypeEnvironment();
 
         std::map<std::string, json11::Json> sumTypes;
@@ -215,14 +216,14 @@ private:
         return sumTypesInfo;
     }
 
-    json11::Json getRecordsTypes(TranslationUnit& translationUnit) const {
+    static json11::Json getRecordsTypes(const TranslationUnit& translationUnit) {
         static json11::Json ramRecordTypes;
         // Check if the types where already constructed
         if (!ramRecordTypes.is_null()) {
             return ramRecordTypes;
         }
 
-        Program& program = translationUnit.getProgram();
+        const Program& program = translationUnit.getProgram();
         auto& typeEnv = translationUnit.getAnalysis<analysis::TypeEnvironmentAnalysis>().getTypeEnvironment();
         std::vector<std::string> elementTypes;
         std::map<std::string, json11::Json> records;
@@ -248,6 +249,7 @@ private:
         return ramRecordTypes;
     }
 
+private:
     json11::Json getRecordsParams(TranslationUnit& translationUnit) const {
         static json11::Json ramRecordParams;
         // Check if the types where already constructed
