@@ -1,0 +1,3 @@
+explain platform("arm")
+explain platform("x86")
+exit

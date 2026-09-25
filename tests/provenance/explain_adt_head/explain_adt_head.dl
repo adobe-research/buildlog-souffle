@@ -1,0 +1,46 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026, The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+//
+// explain_adt_head.dl
+// Rules that construct ADT values in their heads must compile with provenance
+// enabled (previously an "unhandled" assertion in SubproofGenerator), and the
+// explain interface must work for relations in the same program.
+//
+
+.pragma "provenance" "explain"
+
+.type Cond = Eq {k: symbol, v: symbol}
+           | Not {x: Cond}
+           | Top {}
+.type Color = Red {} | Green {}
+
+.decl base(p: symbol)
+base("x86").
+base("arm").
+
+// non-recursive ADT construction in the head
+.decl wrapped(p: symbol, e: Cond)
+wrapped(p, $Eq("cpu", p)) :- base(p).
+wrapped(p, $Top()) :- base(p).
+
+// recursive ADT construction in the head (bounded)
+.decl nested(n: number, e: Cond)
+nested(0, e) :- wrapped("x86", e).
+nested(n + 1, $Not(e)) :- nested(n, e), n < 2.
+
+// enum-like ADT in the head
+.decl color(p: symbol, c: Color)
+color(p, $Red()) :- base(p), p = "x86".
+color(p, $Green()) :- base(p), p != "x86".
+
+// symbol-only relations, whose derivations use ADT-constructing rules
+.decl red(p: symbol)
+red(p) :- color(p, $Red()).
+.decl platform(p: symbol)
+platform(p) :- base(p).
+
+.output wrapped, nested, color, red, platform

@@ -1,0 +1,4 @@
+x86	$Eq(cpu, x86)
+x86	$Top
+arm	$Eq(cpu, arm)
+arm	$Top

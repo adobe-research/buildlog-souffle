@@ -1,0 +1,6 @@
+0	$Eq(cpu, x86)
+0	$Top
+1	$Not($Eq(cpu, x86))
+1	$Not($Top)
+2	$Not($Not($Eq(cpu, x86)))
+2	$Not($Not($Top))

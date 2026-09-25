@@ -1,0 +1,6 @@
+base("arm")    
+-----------(R1)
+platform("arm")
+base("x86")    
+-----------(R1)
+platform("x86")
