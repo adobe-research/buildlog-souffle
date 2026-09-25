@@ -1,0 +1,47 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026, The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+//
+// explain_query_structured_values.dl
+// The explain interface accepts record and ADT literals (as it prints them)
+// in the tuple to explain.
+//
+
+.pragma "provenance" "explain"
+
+.type Point = [x: number, y: float]
+.type List = [head: number, tail: List]
+.type Color = Red {} | Green {}
+.type Cond = Eq {k: symbol, v: symbol}
+           | Not {c: Cond}
+           | At {p: Point}
+           | Paint {c: Color}
+           | Top {}
+
+.decl cond(n: symbol, c: Cond)
+cond("eq", $Eq("cpu", "x86")).
+cond("not", $Not($Eq("os", "linux"))).
+cond("at", $At([1, 2.5])).
+cond("paint", $Paint($Green())).
+cond("top", $Top()).
+
+.decl sub(n: symbol, c: Cond)
+sub(n, c) :- cond(n, c).
+sub(n, c) :- sub(n, $Not(c)).
+
+.decl point(p: Point, n: number)
+point(p, -3) :- sub(_, $At(p)).
+
+.decl color(c: Color)
+color(c) :- sub(_, $Paint(c)).
+
+.decl list(l: List)
+list([1, [2, nil]]).
+
+.decl tail(l: List)
+tail(t) :- list([_, t]).
+
+.output sub, point, color, tail

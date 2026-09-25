@@ -208,7 +208,7 @@ protected:
         }
 
         for (std::size_t i = 0; i < args.size(); i++) {
-            nums.push_back(valueRead(rel->getAttrType(i)[0], args[i]));
+            nums.push_back(valueRead(rel->getAttrType(i), args[i]));
         }
 
         return nums;
@@ -326,17 +326,147 @@ protected:
         return tfm::format("%s(%s)", result, join(shown, ", "));
     }
 
-    RamDomain valueRead(const char type, const std::string& value) const {
-        switch (type) {
-            case 'i': return ramBitCast(RamSignedFromString(value));
-            case 'u': return ramBitCast(RamUnsignedFromString(value));
-            case 'f': return ramBitCast(RamFloatFromString(value));
+    /**
+     * Read a value of the given type qualifier from its textual representation,
+     * as printed by valueShow.
+     **/
+    RamDomain valueRead(const std::string& type, const std::string& value) const {
+        switch (type[0]) {
+            case 'i':
+                if (!canBeParsedAsRamSigned(value)) {
+                    fatal("expected a number, got `%s`", value);
+                }
+                return ramBitCast(RamSignedFromString(value));
+            case 'u':
+                if (!canBeParsedAsRamUnsigned(value)) {
+                    fatal("expected an unsigned number, got `%s`", value);
+                }
+                return ramBitCast(RamUnsignedFromString(value));
+            case 'f':
+                if (!canBeParsedAsRamFloat(value)) {
+                    fatal("expected a float, got `%s`", value);
+                }
+                return ramBitCast(RamFloatFromString(value));
             case 's':
-                assert(2 <= value.size() && value[0] == '"' && value.back() == '"');
+                if (value.size() < 2 || value[0] != '"' || value.back() != '"') {
+                    fatal("expected a string, got `%s`", value);
+                }
                 return symTable.encode(value.substr(1, value.size() - 2));
-            case 'r': fatal("not implemented");
+            case 'r': return recordRead(type, value);
+            case '+': return adtRead(type, value);
             default: fatal("unhandled type attr code");
         }
+    }
+
+    // Note: reading a record or ADT value may add a new entry to the record table, in which
+    // case no tuple contains it.
+    RamDomain recordRead(const std::string& type, const std::string& value) const {
+        auto&& recordInfo = types["records"][type];
+        if (recordInfo.is_null()) {
+            fatal("no type information for record type `%s`", type);
+        }
+        if (value == "nil") {
+            return 0;
+        }
+
+        auto&& fieldTypes = recordInfo["types"].array_items();
+        std::vector<std::string> fields;
+        if (value.size() < 2 || value[0] != '[' || value.back() != ']' ||
+                !splitValues(value.substr(1, value.size() - 2), fields) ||
+                fields.size() != fieldTypes.size()) {
+            fatal("expected a record of type `%s`, got `%s`", type, value);
+        }
+
+        std::vector<RamDomain> nums;
+        for (std::size_t i = 0; i < fieldTypes.size(); ++i) {
+            nums.push_back(valueRead(fieldTypes[i].string_value(), fields[i]));
+        }
+        return prog.getRecordTable().pack(nums.data(), nums.size());
+    }
+
+    RamDomain adtRead(const std::string& type, const std::string& value) const {
+        auto&& adtInfo = types["ADTs"][type];
+        if (adtInfo.is_null()) {
+            fatal("no type information for ADT type `%s`", type);
+        }
+
+        // $Branch or $Branch(arg, ...)
+        const auto open = value.find('(');
+        std::vector<std::string> args;
+        if (value.size() < 2 || value[0] != '$' ||
+                (open != std::string::npos &&
+                        (value.back() != ')' ||
+                                !splitValues(value.substr(open + 1, value.size() - open - 2), args)))) {
+            fatal("expected an ADT value of type `%s`, got `%s`", type, value);
+        }
+        const std::string name = value.substr(1, open == std::string::npos ? open : open - 1);
+
+        auto&& branches = adtInfo["branches"].array_items();
+        auto branch = std::find_if(branches.begin(), branches.end(),
+                [&](const json11::Json& b) { return b["name"].string_value() == name; });
+        if (branch == branches.end()) {
+            fatal("`%s` is not a branch of ADT type `%s`", name, type);
+        }
+        const auto branchId = static_cast<RamDomain>(branch - branches.begin());
+
+        auto&& branchTypes = (*branch)["types"].array_items();
+        if (args.size() != branchTypes.size()) {
+            fatal("branch `%s` of ADT type `%s` takes %d argument(s), got `%s`", name, type,
+                    branchTypes.size(), value);
+        }
+
+        // See adtShow for the encoding.
+        if (adtInfo["enum"].bool_value()) {
+            return branchId;
+        }
+        std::vector<RamDomain> nums;
+        for (std::size_t i = 0; i < branchTypes.size(); ++i) {
+            nums.push_back(valueRead(branchTypes[i].string_value(), args[i]));
+        }
+        RamDomain payload = nums.size() == 1 ? nums[0] : prog.getRecordTable().pack(nums.data(), nums.size());
+        return prog.getRecordTable().pack({branchId, payload});
+    }
+
+public:
+    /**
+     * Split a comma-separated list of values at the top level, i.e. not inside strings,
+     * records, or ADT arguments, trimming surrounding blanks.
+     * Returns false if quotes or brackets are unbalanced, or if a value is empty.
+     **/
+    static bool splitValues(const std::string& str, std::vector<std::string>& values) {
+        auto trim = [](const std::string& s) {
+            const auto begin = s.find_first_not_of(" \t");
+            return begin == std::string::npos ? std::string()
+                                              : s.substr(begin, s.find_last_not_of(" \t") - begin + 1);
+        };
+
+        values.clear();
+        std::string current;
+        int depth = 0;
+        bool inString = false;
+        for (char c : str) {
+            if (inString) {
+                inString = c != '"';
+            } else if (c == '"') {
+                inString = true;
+            } else if (c == '[' || c == '(') {
+                depth++;
+            } else if ((c == ']' || c == ')') && --depth < 0) {
+                return false;
+            } else if (c == ',' && depth == 0) {
+                values.push_back(trim(current));
+                current.clear();
+                continue;
+            }
+            current += c;
+        }
+        if (inString || depth != 0) {
+            return false;
+        }
+        if (!values.empty() || !trim(current).empty()) {
+            values.push_back(trim(current));
+        }
+        return std::none_of(values.begin(), values.end(), [](const std::string& v) { return v.empty(); });
     }
 };
 

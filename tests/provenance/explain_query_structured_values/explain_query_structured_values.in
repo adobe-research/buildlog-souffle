@@ -1,0 +1,12 @@
+explain sub("not", $Eq("os", "linux"))
+explain sub("not",$Eq( "os" , "linux" ))
+explain sub("top", $Top)
+explain sub("top", $Top())
+explain point([1, 2.500000], -3)
+explain point([1, 2.5], -3)
+explain color($Green)
+explain sub("paint", $Paint($Green))
+explain tail([2, nil])
+explain sub("eq", $Eq("cpu", "arm"))
+explain point(nil, -3)
+exit

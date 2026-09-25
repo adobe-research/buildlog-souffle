@@ -303,38 +303,24 @@ private:
         std::string relName;
         std::vector<std::string> args;
 
-        // regex for matching tuples
-        // values matches numbers or strings enclosed in quotation marks
-        std::regex relationRegex(
-                "([a-zA-Z0-9_.-]*)[[:blank:]]*\\(([[:blank:]]*([0-9]+|\"[^\"]*\")([[:blank:]]*,[[:blank:]]*(["
-                "0-"
-                "9]+|\"[^\"]*\"))*)?\\)",
-                std::regex_constants::extended);
+        // match the relation name and the parenthesised list of values
+        std::regex relationRegex(R"(([a-zA-Z0-9_.-]*)[[:blank:]]*\((.*)\))", std::regex_constants::extended);
         std::smatch relMatch;
-
-        // first check that format matches correctly
-        // and extract relation name
-        if (!std::regex_match(str, relMatch, relationRegex) || relMatch.size() < 3) {
-            return std::make_pair(relName, args);
+        if (!std::regex_match(str, relMatch, relationRegex) ||
+                !ExplainProvenance::splitValues(relMatch[2], args)) {
+            return std::make_pair(relName, std::vector<std::string>());
         }
 
-        // set relation name
+        // values are numbers, strings enclosed in quotation marks, or record or ADT literals,
+        // whose contents are checked against their type later
+        std::regex valueRegex(R"(-?[0-9]+(\.[0-9]+)?|"[^"]*"|nil|\[.*\]|\$[a-zA-Z_][a-zA-Z_0-9]*(\(.*\))?)");
+        for (const auto& arg : args) {
+            if (!std::regex_match(arg, valueRegex)) {
+                return std::make_pair(relName, std::vector<std::string>());
+            }
+        }
+
         relName = relMatch[1];
-
-        // extract each argument
-        std::string argsList = relMatch[2];
-        std::smatch argsMatcher;
-        std::regex argRegex(R"([0-9]+|"[^"]*")", std::regex_constants::extended);
-
-        while (std::regex_search(argsList, argsMatcher, argRegex)) {
-            // match the start of the arguments
-            std::string currentArg = argsMatcher[0];
-            args.push_back(currentArg);
-
-            // use the rest of the arguments
-            argsList = argsMatcher.suffix().str();
-        }
-
         return std::make_pair(relName, args);
     }
 
