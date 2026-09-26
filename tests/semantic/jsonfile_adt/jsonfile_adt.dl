@@ -1,0 +1,23 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026, The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+// This is a functional test for JSON output of ADT values.
+// JSON output is directed to file.
+
+.type Color = Red {} | Green {}
+.type Cond = Eq {key: symbol, value: symbol} | None {} | Num {n: number} | Nested {c: Cond, p: Pair}
+.type Pair = [first: symbol, cond: Cond]
+
+.decl A(x: symbol, c: Cond, color: Color)
+A("eq", $Eq("k", "v\"q"), $Red()).
+A("none", $None(), $Green()).
+A("num", $Num(-2), $Red()).
+A("nested", $Nested($Num(3), ["p", $None()]), $Green()).
+.output A(IO=jsonfile, filename="writeA.json")
+
+.decl B(p: Pair)
+B(["q", $Eq("a", "b")]).
+B(nil).
+.output B(IO=jsonfile, filename="writeB.json", format=object)

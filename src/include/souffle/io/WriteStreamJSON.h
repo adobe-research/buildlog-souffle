@@ -48,6 +48,40 @@ protected:
     const bool useObjects;
     Json params;
 
+    using ValueTuple = std::pair<const std::string, const RamDomain>;
+    using Worklist = std::stack<std::variant<ValueTuple, std::string>>;
+
+    /**
+     * Push an ADT value onto the worklist as {"$Branch": [arguments...]}.
+     * See WriteStream::outputADT for the encoding of ADT values.
+     */
+    void pushADT(Worklist& worklist, const std::string& type, const RamDomain value) const {
+        auto&& adtInfo = types["ADTs"][type];
+        assert(!adtInfo.is_null() && "Missing adt type information");
+
+        RamDomain branchId = value;
+        const RamDomain* branchArgs = nullptr;
+        if (!adtInfo["enum"].bool_value()) {
+            const RamDomain* tuplePtr = recordTable.unpack(value, 2);
+            branchId = tuplePtr[0];
+            branchArgs = &tuplePtr[1];
+        }
+        auto&& branchInfo = adtInfo["branches"][branchId];
+        auto&& branchTypes = branchInfo["types"].array_items();
+        if (branchTypes.size() > 1) {
+            branchArgs = recordTable.unpack(*branchArgs, branchTypes.size());
+        }
+
+        worklist.push("]}");
+        for (auto i = (long long)branchTypes.size() - 1; i >= 0; --i) {
+            if (i != (long long)branchTypes.size() - 1) {
+                worklist.push(", ");
+            }
+            worklist.push(std::make_pair(branchTypes[i].string_value(), branchArgs[i]));
+        }
+        worklist.push("{" + Json("$" + branchInfo["name"].string_value()).dump() + ": [");
+    }
+
     void writeNextTupleJSON(std::ostream& destination, const RamDomain* tuple) {
         std::vector<Json> result;
 
@@ -76,8 +110,7 @@ protected:
     }
 
     void writeNextTupleList(std::ostream& destination, const std::string& name, const RamDomain value) {
-        using ValueTuple = std::pair<const std::string, const RamDomain>;
-        std::stack<std::variant<ValueTuple, std::string>> worklist;
+        Worklist worklist;
         worklist.push(std::make_pair(name, value));
 
         // the Json11 output is not tail recursive, therefore highly inefficient for recursive record
@@ -124,14 +157,14 @@ protected:
                     worklist.push("[");
                     break;
                 }
+                case '+': pushADT(worklist, currType, currValue); break;
                 default: fatal("unsupported type attribute: `%c`", currType[0]);
             }
         }
     }
 
     void writeNextTupleObject(std::ostream& destination, const std::string& name, const RamDomain value) {
-        using ValueTuple = std::pair<const std::string, const RamDomain>;
-        std::stack<std::variant<ValueTuple, std::string>> worklist;
+        Worklist worklist;
         worklist.push(std::make_pair(name, value));
 
         // the Json11 output is not tail recursive, therefore highly inefficient for recursive record
@@ -184,6 +217,7 @@ protected:
                     worklist.push("{");
                     break;
                 }
+                case '+': pushADT(worklist, currType, currValue); break;
                 default: fatal("unsupported type attribute: `%c`", currType[0]);
             }
         }
