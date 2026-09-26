@@ -1,13 +1,13 @@
-c = $Green, n = paint.
-k = cpu, n = eq, v = x86
-k = os, n = not, v = linux.
-n = not, v = linux.
-k = os, n = not.
-n = at, x = 1, y = 2.5.
+c = $Green, n = "paint".
+k = "cpu", n = "eq", v = "x86"
+k = "os", n = "not", v = "linux".
+n = "not", v = "linux".
+k = "os", n = "not".
+n = "at", x = 1, y = 2.5.
 n = -3, x = 1, y = 2.5.
-h = 1, n = a, t = [2, nil].
-h = 2, n = a.
+h = 1, n = "a", t = [2, nil].
+h = 2, n = "a".
 false.
 false.
-k = cpu, m = eq, n = eq, v = x86.
+k = "cpu", m = "eq", n = "eq", v = "x86".
 false.

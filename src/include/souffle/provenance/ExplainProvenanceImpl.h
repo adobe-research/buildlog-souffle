@@ -1083,7 +1083,7 @@ private:
                         case 'i': solution << ramBitCast<RamSigned>(raw); break;
                         case 'f': solution << ramBitCast<RamFloat>(raw); break;
                         case 'u': solution << ramBitCast<RamUnsigned>(raw); break;
-                        case 's': solution << prog.getSymbolTable().decode(raw); break;
+                        case 's': solution << quoteSymbol(prog.getSymbolTable().decode(raw)); break;
                         case 'r':
                         case '+': solution << valueShow(var.second.getType(), raw); break;
                         default: fatal("invalid type: `%s`", var.second.getType());

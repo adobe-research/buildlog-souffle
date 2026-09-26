@@ -1,0 +1,7 @@
+query pair(x, y)
+;
+;
+;
+query pair("a", y)
+query pair(x, "")
+exit
