@@ -75,6 +75,16 @@ public:
     /* Process a command, a return value of true indicates to continue, returning false indicates to break (if
      * the command is q/exit) */
     bool processCommand(std::string& commandLine) {
+        try {
+            return runCommand(commandLine);
+        } catch (const ExplainValueError& e) {
+            printError(std::string(e.what()) + "\n");
+            return true;
+        }
+    }
+
+private:
+    bool runCommand(std::string& commandLine) {
         std::vector<std::string> command = split(commandLine, ' ', 1);
 
         if (command.empty()) {
@@ -268,6 +278,7 @@ public:
         return true;
     }
 
+public:
     /* The main explain call */
     virtual void explain() = 0;
 

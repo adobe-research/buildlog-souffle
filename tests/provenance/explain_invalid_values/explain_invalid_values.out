@@ -1,0 +1,12 @@
+`Nope` is not a branch of ADT type `+:Cond`
+branch `Eq` of ADT type `+:Cond` takes 2 argument(s), got `$Eq("cpu")`
+expected a record of type `r:Point`, got `[1]`
+expected a number, got `"x"`
+cond("paint", $Paint($Green)) 
+--------------------------(R1)
+ sub("paint", $Paint($Green)) 
+expected an ADT value of type `+:Color`, got `c2`
+expected a record of type `r:List`, got `l`
+`Nope` is not a branch of ADT type `+:Cond`
+expected a float, got `"x"`
+n = a.

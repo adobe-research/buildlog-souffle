@@ -1,0 +1,6 @@
+eq	$Eq(cpu, x86)
+not	$Eq(os, linux)
+not	$Not($Eq(os, linux))
+at	$At([1, 2.5])
+paint	$Paint($Green)
+top	$Top

@@ -30,12 +30,19 @@
 #include <map>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace souffle {
 class TreeNode;
+
+/** Error raised when a value given to explain or query does not match its type. */
+class ExplainValueError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 /** Equivalence class for variables in query command */
 class Equivalence {
@@ -334,22 +341,22 @@ protected:
         switch (type[0]) {
             case 'i':
                 if (!canBeParsedAsRamSigned(value)) {
-                    fatal("expected a number, got `%s`", value);
+                    throw ExplainValueError(tfm::format("expected a number, got `%s`", value));
                 }
                 return ramBitCast(RamSignedFromString(value));
             case 'u':
                 if (!canBeParsedAsRamUnsigned(value)) {
-                    fatal("expected an unsigned number, got `%s`", value);
+                    throw ExplainValueError(tfm::format("expected an unsigned number, got `%s`", value));
                 }
                 return ramBitCast(RamUnsignedFromString(value));
             case 'f':
                 if (!canBeParsedAsRamFloat(value)) {
-                    fatal("expected a float, got `%s`", value);
+                    throw ExplainValueError(tfm::format("expected a float, got `%s`", value));
                 }
                 return ramBitCast(RamFloatFromString(value));
             case 's':
                 if (value.size() < 2 || value[0] != '"' || value.back() != '"') {
-                    fatal("expected a string, got `%s`", value);
+                    throw ExplainValueError(tfm::format("expected a string, got `%s`", value));
                 }
                 return symTable.encode(value.substr(1, value.size() - 2));
             case 'r': return recordRead(type, value);
@@ -374,7 +381,7 @@ protected:
         if (value.size() < 2 || value[0] != '[' || value.back() != ']' ||
                 !splitValues(value.substr(1, value.size() - 2), fields) ||
                 fields.size() != fieldTypes.size()) {
-            fatal("expected a record of type `%s`, got `%s`", type, value);
+            throw ExplainValueError(tfm::format("expected a record of type `%s`, got `%s`", type, value));
         }
 
         std::vector<RamDomain> nums;
@@ -397,7 +404,7 @@ protected:
                 (open != std::string::npos &&
                         (value.back() != ')' ||
                                 !splitValues(value.substr(open + 1, value.size() - open - 2), args)))) {
-            fatal("expected an ADT value of type `%s`, got `%s`", type, value);
+            throw ExplainValueError(tfm::format("expected an ADT value of type `%s`, got `%s`", type, value));
         }
         const std::string name = value.substr(1, open == std::string::npos ? open : open - 1);
 
@@ -405,14 +412,14 @@ protected:
         auto branch = std::find_if(branches.begin(), branches.end(),
                 [&](const json11::Json& b) { return b["name"].string_value() == name; });
         if (branch == branches.end()) {
-            fatal("`%s` is not a branch of ADT type `%s`", name, type);
+            throw ExplainValueError(tfm::format("`%s` is not a branch of ADT type `%s`", name, type));
         }
         const auto branchId = static_cast<RamDomain>(branch - branches.begin());
 
         auto&& branchTypes = (*branch)["types"].array_items();
         if (args.size() != branchTypes.size()) {
-            fatal("branch `%s` of ADT type `%s` takes %d argument(s), got `%s`", name, type,
-                    branchTypes.size(), value);
+            throw ExplainValueError(tfm::format("branch `%s` of ADT type `%s` takes %d argument(s), got `%s`",
+                    name, type, branchTypes.size(), value));
         }
 
         // See adtShow for the encoding.
