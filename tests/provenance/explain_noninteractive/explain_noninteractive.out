@@ -1,0 +1,12 @@
+path(x,z) :- 
+   path(x,y),
+   e(y,z).
+Rule not found
+The tuple would be an input fact!
+The tuple exists, cannot explain negation of it!
+The variable bindings don't match, cannot explain!
+e(1, 2)            
+------(R1)         
+path(1, 2) e(2, 3) 
+---------------(R2)
+    path(1, 3)     

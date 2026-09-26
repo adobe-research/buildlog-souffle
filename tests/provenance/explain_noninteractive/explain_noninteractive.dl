@@ -1,0 +1,23 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026 The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+// This code tests that command results and explainnegation outcomes are
+// printed when the explain interface does not read from a terminal.
+
+.pragma "provenance" "explain"
+
+.decl e(x: number, y: number)
+e(1, 2).
+e(2, 3).
+
+.decl same(x: number, y: number)
+.output same
+same(x, x) :- e(x, _).
+
+.decl path(x: number, y: number)
+.output path
+path(x, y) :- e(x, y).
+path(x, z) :- path(x, y), e(y, z).

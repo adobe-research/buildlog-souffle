@@ -1,0 +1,9 @@
+rule path 2
+rule path 3
+explainnegation e(3, 4)
+explainnegation path(1, 3)
+1
+explainnegation same(1, 2)
+1
+explain path(1, 3)
+exit

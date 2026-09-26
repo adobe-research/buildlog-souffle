@@ -141,7 +141,7 @@ private:
 
             // if there are no rules, then this must be an EDB relation
             if (prov.getRules(query.first).size() == 0) {
-                printInfo("The tuple would be an input fact!\n");
+                printError("The tuple would be an input fact!\n");
                 return true;
             }
 
@@ -173,13 +173,13 @@ private:
 
             // @ and @non_matching are special sentinel values returned by ExplainProvenance
             if (variables.size() == 1 && variables[0] == "@") {
-                printInfo("The tuple exists, cannot explain negation of it!\n");
+                printError("The tuple exists, cannot explain negation of it!\n");
                 return true;
             } else if (variables.size() == 1 && variables[0] == "@non_matching") {
-                printInfo("The variable bindings don't match, cannot explain!\n");
+                printError("The variable bindings don't match, cannot explain!\n");
                 return true;
             } else if (variables.size() == 1 && variables[0] == "@fact") {
-                printInfo("The rule is a fact!\n");
+                printError("The rule is a fact!\n");
                 return true;
             }
 
@@ -197,13 +197,13 @@ private:
                 return true;
             }
             try {
-                printInfo(prov.getRule(query[0], std::stoi(query[1])) + "\n");
+                printResult(prov.getRule(query[0], std::stoi(query[1])) + "\n");
             } catch (std::exception& e) {
                 printError("Usage: rule <relation name> <rule number>\n");
             }
         } else if (command[0] == "measure") {
             try {
-                printInfo(prov.measureRelation(command[1]));
+                printResult(prov.measureRelation(command[1]));
             } catch (std::exception& e) {
                 printError("Usage: measure <relation name>\n");
             }
@@ -307,6 +307,9 @@ private:
 
     /* Print any other information, disabled for non-terminal outputs */
     virtual void printInfo(const std::string& info) = 0;
+
+    /* Print the result of a command other than a tree */
+    virtual void printResult(const std::string& result) = 0;
 
     /* Print an error, such as a wrong command */
     virtual void printError(const std::string& error) = 0;
@@ -431,6 +434,11 @@ private:
         std::cout << info;
     }
 
+    /* Print the result of a command other than a tree */
+    void printResult(const std::string& result) override {
+        std::cout << result;
+    }
+
     /* Print an error, such as a wrong command */
     void printError(const std::string& error) override {
         std::cout << error;
@@ -539,6 +547,12 @@ private:
             return;
         }
         wprintw(treePad, "%s", info.c_str());
+        prefresh(treePad, 0, 0, 0, 0, maxy - 3, maxx - 1);
+    }
+
+    /* Print the result of a command other than a tree */
+    void printResult(const std::string& result) override {
+        wprintw(treePad, "%s", result.c_str());
         prefresh(treePad, 0, 0, 0, 0, maxy - 3, maxx - 1);
     }
 
