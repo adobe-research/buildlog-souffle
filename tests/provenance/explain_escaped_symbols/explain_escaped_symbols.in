@@ -1,0 +1,12 @@
+explain b("he said \"hi\"", ["k\\v", "q\"x"])
+explain b("back\\slash, (tab\t)", ["k", "v"])
+explain b("he said \"hi\"", ["k", "v"])
+explain b("unterminated\", ["k", "v"])
+query b("he said \"hi\"", ["k\\v", "q\"x"])
+query b("back\\slash, (tab\t)", ["k", "v"])
+query b("back\\slash, (tab\\t)", ["k", "v"])
+explainnegation c("he said \"hi\"")
+1
+["k\\v", "q\"x"]
+"back\\slash"
+exit

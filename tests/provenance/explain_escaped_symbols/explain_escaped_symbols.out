@@ -1,0 +1,15 @@
+a("he said \"hi\"", ["k\\v", "q\"x"]) 
+----------------------------------(R1)
+b("he said \"hi\"", ["k\\v", "q\"x"]) 
+a("back\\slash, (tab\t)", ["k", "v"]) 
+----------------------------------(R1)
+b("back\\slash, (tab\t)", ["k", "v"]) 
+Tuple not found
+Relation not found
+true.
+true.
+false.
+Tuple b("back\\slash, (tab\\t)", ["k", "v"]) does not exist
+a("he said \"hi\"", ["k\\v", "q\"x"]) ✓ a("back\\slash", ["k\\v", "q\"x"]) x "he said \"hi\"" != "back\\slash" ✓ "back\\slash" = "back\\slash" ✓ 
+---------------------------------------------------------------------------------------------------------------------------------------------------(R1)
+                                                                  c("he said \"hi\"")                                                                  

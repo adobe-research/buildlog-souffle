@@ -1,0 +1,25 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026 The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+// This code tests that explain, explainnegation and query read and print
+// symbols with escape sequences as Datalog string literals.
+
+.pragma "provenance" "explain"
+
+.type Pair = [key: symbol, value: symbol]
+
+.decl a(x: symbol, p: Pair)
+a("he said \"hi\"", ["k\\v", "q\"x"]).
+a("back\\slash, (tab\t)", ["k", "v"]).
+a("back\\slash", ["k", "v"]).
+
+.decl b(x: symbol, p: Pair)
+.output b
+b(x, p) :- a(x, p).
+
+.decl c(x: symbol)
+.output c
+c(x) :- a(x, p), a(y, p), x != y, y = "back\\slash".

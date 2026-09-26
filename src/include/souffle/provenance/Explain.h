@@ -342,7 +342,7 @@ private:
 
         // values are numbers, strings enclosed in quotation marks, or record or ADT literals,
         // whose contents are checked against their type later
-        std::regex valueRegex(R"(-?[0-9]+(\.[0-9]+)?|"[^"]*"|nil|\[.*\]|\$[a-zA-Z_][a-zA-Z_0-9]*(\(.*\))?)");
+        std::regex valueRegex(R"(-?[0-9]+(\.[0-9]+)?|"([^"\\]|\\.)*"|nil|\[.*\]|\$[a-zA-Z_][a-zA-Z_0-9]*(\(.*\))?)");
         std::regex variableRegex(R"([a-zA-Z_][a-zA-Z_0-9]*)");
         for (const auto& arg : args) {
             if (!std::regex_match(arg, valueRegex) &&

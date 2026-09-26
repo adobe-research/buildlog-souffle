@@ -665,10 +665,7 @@ public:
     }
 
     void queryProcess(const std::vector<std::pair<std::string, std::vector<std::string>>>& rels) override {
-        std::regex symbolRegex("\"([^\"]*)\"", std::regex_constants::extended);
         std::regex numberRegex("[0-9]+", std::regex_constants::extended);
-
-        std::smatch argsMatcher;
 
         // map for variable name and corresponding equivalence class
         std::map<std::string, Equivalence> nameToEquivalence;
@@ -722,13 +719,16 @@ public:
                 RamDomain rd;
                 switch (*(relation->getAttrType(j))) {
                     case 's':
-                        if (!std::regex_match(rel.second[j], argsMatcher, symbolRegex)) {
-                            std::cout << argsMatcher.str(0) << " does not match type defined in relation"
+                    {
+                        std::string symbol;
+                        if (!unquoteSymbol(rel.second[j], symbol)) {
+                            std::cout << rel.second[j] << " does not match type defined in relation"
                                       << std::endl;
                             return;
                         }
-                        rd = prog.getSymbolTable().encode(argsMatcher[1]);
+                        rd = prog.getSymbolTable().encode(symbol);
                         break;
+                    }
                     case 'f':
                         if (!canBeParsedAsRamFloat(rel.second[j])) {
                             std::cout << rel.second[j] << " does not match type defined in relation"

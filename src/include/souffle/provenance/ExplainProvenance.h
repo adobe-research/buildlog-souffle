@@ -284,7 +284,7 @@ protected:
             case 'i': return tfm::format("%d", ramBitCast<RamSigned>(value));
             case 'u': return tfm::format("%d", ramBitCast<RamUnsigned>(value));
             case 'f': return tfm::format("%f", ramBitCast<RamFloat>(value));
-            case 's': return tfm::format("\"%s\"", symTable.decode(value));
+            case 's': return quoteSymbol(symTable.decode(value));
             case 'r': return recordShow(type, value);
             case '+': return adtShow(type, value);
             default: fatal("unhandled type attr code");
@@ -373,11 +373,13 @@ protected:
                     throw ExplainValueError(tfm::format("expected a float, got `%s`", value));
                 }
                 return ramBitCast(RamFloatFromString(value));
-            case 's':
-                if (value.size() < 2 || value[0] != '"' || value.back() != '"') {
+            case 's': {
+                std::string symbol;
+                if (!unquoteSymbol(value, symbol)) {
                     throw ExplainValueError(tfm::format("expected a string, got `%s`", value));
                 }
-                return symTable.encode(value.substr(1, value.size() - 2));
+                return symTable.encode(symbol);
+            }
             case 'r': return recordRead(type, value);
             case '+': return adtRead(type, value);
             default: fatal("unhandled type attr code");
@@ -503,6 +505,64 @@ protected:
     }
 
 public:
+    /** Show a symbol as a Datalog string literal, escaping as the parser expects */
+    static std::string quoteSymbol(const std::string& symbol) {
+        std::string quoted = "\"";
+        for (char c : symbol) {
+            switch (c) {
+                case '"': quoted += "\\\""; break;
+                case '\\': quoted += "\\\\"; break;
+                case '\a': quoted += "\\a"; break;
+                case '\b': quoted += "\\b"; break;
+                case '\f': quoted += "\\f"; break;
+                case '\n': quoted += "\\n"; break;
+                case '\r': quoted += "\\r"; break;
+                case '\t': quoted += "\\t"; break;
+                case '\v': quoted += "\\v"; break;
+                default: quoted += c;
+            }
+        }
+        return quoted + "\"";
+    }
+
+    /**
+     * Read a Datalog string literal, see quoteSymbol. Unknown escape sequences are kept
+     * verbatim. Returns false if the value is not a string literal.
+     */
+    static bool unquoteSymbol(const std::string& value, std::string& symbol) {
+        if (value.size() < 2 || value.front() != '"' || value.back() != '"') {
+            return false;
+        }
+        symbol.clear();
+        for (std::size_t i = 1; i + 1 < value.size(); ++i) {
+            const char c = value[i];
+            if (c == '"') {
+                return false;
+            }
+            if (c != '\\') {
+                symbol += c;
+                continue;
+            }
+            if (i + 2 >= value.size()) {
+                return false;
+            }
+            switch (value[++i]) {
+                case '"': symbol += '"'; break;
+                case '\'': symbol += '\''; break;
+                case '\\': symbol += '\\'; break;
+                case 'a': symbol += '\a'; break;
+                case 'b': symbol += '\b'; break;
+                case 'f': symbol += '\f'; break;
+                case 'n': symbol += '\n'; break;
+                case 'r': symbol += '\r'; break;
+                case 't': symbol += '\t'; break;
+                case 'v': symbol += '\v'; break;
+                default: symbol += '\\'; symbol += value[i];
+            }
+        }
+        return true;
+    }
+
     /**
      * Split a comma-separated list of values at the top level, i.e. not inside strings,
      * records, or ADT arguments, trimming surrounding blanks.
@@ -519,9 +579,11 @@ public:
         std::string current;
         int depth = 0;
         bool inString = false;
+        bool escaped = false;
         for (char c : str) {
             if (inString) {
-                inString = c != '"';
+                inString = escaped || c != '"';
+                escaped = !escaped && c == '\\';
             } else if (c == '"') {
                 inString = true;
             } else if (c == '[' || c == '(') {
