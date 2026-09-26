@@ -33,6 +33,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -601,8 +602,54 @@ public:
         os << "\n]\n";
     }
 
+    /** A variable of a query and its position */
+    struct QueryVariable {
+        std::string name;
+        std::string type;
+        QueryPosition position;
+    };
+
+    static bool isQueryVariable(const std::string& arg) {
+        static const std::regex varRegex("[a-zA-Z_][a-zA-Z_0-9]*");
+        return arg != "nil" && std::regex_match(arg, varRegex);
+    }
+
+    /**
+     * Collect the variables and constants of a query argument of the given type at the given
+     * position, descending into record and ADT literals that contain variables.
+     * Returns whether the argument contains variables.
+     */
+    bool collectQueryPattern(const std::string& type, const std::string& arg, const QueryPosition& position,
+            std::vector<QueryVariable>& vars,
+            std::vector<std::pair<QueryPosition, RamDomain>>& consts) const {
+        if (isQueryVariable(arg)) {
+            vars.push_back({arg, type, position});
+            return true;
+        }
+
+        if ((type[0] == 'r' && arg != "nil") || type[0] == '+') {
+            const ValueParts parts = type[0] == 'r' ? recordParts(type, arg) : adtParts(type, arg);
+            std::vector<QueryVariable> argVars;
+            std::vector<std::pair<QueryPosition, RamDomain>> argConsts;
+            bool hasVariables = false;
+            for (std::size_t i = 0; i < parts.args.size(); ++i) {
+                QueryPosition argPosition = position;
+                argPosition.steps.push_back({type[0], parts.branchId, parts.args.size(), i});
+                hasVariables |= collectQueryPattern(
+                        parts.argTypes[i], parts.args[i], argPosition, argVars, argConsts);
+            }
+            if (hasVariables) {
+                vars.insert(vars.end(), argVars.begin(), argVars.end());
+                consts.insert(consts.end(), argConsts.begin(), argConsts.end());
+                return true;
+            }
+        }
+
+        consts.emplace_back(position, valueRead(type, arg));
+        return false;
+    }
+
     void queryProcess(const std::vector<std::pair<std::string, std::vector<std::string>>>& rels) override {
-        std::regex varRegex("[a-zA-Z_][a-zA-Z_0-9]*", std::regex_constants::extended);
         std::regex symbolRegex("\"([^\"]*)\"", std::regex_constants::extended);
         std::regex numberRegex("[0-9]+", std::regex_constants::extended);
 
@@ -639,19 +686,21 @@ public:
             // check if args contain variable
             bool containVar = false;
             for (std::size_t j = 0; j < rel.second.size(); ++j) {
-                // arg is a variable
-                if (rel.second[j] != "nil" && std::regex_match(rel.second[j], argsMatcher, varRegex)) {
-                    containVar = true;
-                    auto nameToEquivalenceIter = nameToEquivalence.find(argsMatcher[0]);
-                    // if variable has not shown up before, create an equivalence class for add it to
-                    // nameToEquivalence map, otherwise add its indices to corresponding equivalence class
+                // variable occurrences, added to the equivalence class of their name
+                auto addVariable = [&](const QueryVariable& var) {
+                    auto nameToEquivalenceIter = nameToEquivalence.find(var.name);
                     if (nameToEquivalenceIter == nameToEquivalence.end()) {
-                        nameToEquivalence.insert(
-                                {argsMatcher[0], Equivalence(relation->getAttrType(j), argsMatcher[0],
-                                                         std::make_pair(idx, j))});
+                        nameToEquivalence.insert({var.name, Equivalence(var.type, var.name, var.position)});
                     } else {
-                        nameToEquivalenceIter->second.push_back(std::make_pair(idx, j));
+                        nameToEquivalenceIter->second.push_back(var.position);
                     }
+                };
+                const QueryPosition position{idx, j, {}};
+
+                // arg is a variable
+                if (isQueryVariable(rel.second[j])) {
+                    containVar = true;
+                    addVariable({rel.second[j], relation->getAttrType(j), position});
                     continue;
                 }
 
@@ -690,11 +739,27 @@ public:
                         rd = ramBitCast(RamUnsignedFromString(rel.second[j]));
                         break;
                     case 'r':
-                    case '+': rd = valueRead(relation->getAttrType(j), rel.second[j]); break;
+                    case '+': {
+                        std::vector<QueryVariable> vars;
+                        std::vector<std::pair<QueryPosition, RamDomain>> consts;
+                        if (collectQueryPattern(
+                                    relation->getAttrType(j), rel.second[j], position, vars, consts)) {
+                            containVar = true;
+                            for (const auto& var : vars) {
+                                addVariable(var);
+                            }
+                            for (auto& constr : consts) {
+                                constConstraints.push_back(std::move(constr));
+                            }
+                            continue;
+                        }
+                        rd = consts.front().second;
+                        break;
+                    }
                     default: continue;
                 }
 
-                constConstraints.push_back(std::make_pair(std::make_pair(idx, j), rd));
+                constConstraints.push_back(std::make_pair(position, rd));
                 if (!containVar) {
                     constTuple.push_back(rd);
                 }
@@ -833,16 +898,25 @@ private:
             for (auto it : varRelationIterators) {
                 element.push_back(*it);
             }
+            const QueryValueAt valueAt = [&](const QueryPosition& position) -> std::optional<RamDomain> {
+                std::optional<RamDomain> value = element[position.atom][position.attr];
+                for (auto&& step : position.steps) {
+                    if (!(value = valueStep(*value, step))) {
+                        break;
+                    }
+                }
+                return value;
+            };
             // check if tuple satisfies variable equivalence
-            for (auto var : nameToEquivalence) {
-                if (!var.second.verify(element)) {
+            for (auto&& var : nameToEquivalence) {
+                if (!var.second.verify(valueAt)) {
                     isSolution = false;
                     break;
                 }
             }
             if (isSolution) {
                 // check if tuple satisfies constant constraints
-                isSolution = constConstraints.verify(element);
+                isSolution = constConstraints.verify(valueAt);
             }
 
             if (isSolution) {
@@ -854,8 +928,7 @@ private:
 
                 std::size_t c = 0;
                 for (auto&& var : nameToEquivalence) {
-                    auto idx = var.second.getFirstIdx();
-                    auto raw = element[idx.first][idx.second];
+                    auto raw = *valueAt(var.second.getFirstPosition());
 
                     solution << var.second.getSymbol() << " = ";
                     switch (var.second.getType()[0]) {

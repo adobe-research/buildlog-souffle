@@ -1,0 +1,31 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026, The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+//
+// query_nested_variables.dl
+// Variables in the query command may occur inside record and ADT
+// literals, and are matched against the fields of the values.
+//
+
+.pragma "provenance" "explain"
+
+.type Point = [x: number, y: float]
+.type List = [head: number, tail: List]
+.type Color = Red {} | Green {}
+.type Cond = Eq {k: symbol, v: symbol} | Not {c: Cond} | At {p: Point} | Paint {c: Color} | Top {}
+.decl cond(n: symbol, c: Cond)
+cond("eq", $Eq("cpu", "x86")). cond("not", $Not($Eq("os", "linux"))). cond("at", $At([1, 2.5])).
+cond("paint", $Paint($Green())). cond("top", $Top()).
+.decl sub(n: symbol, c: Cond)
+sub(n, c) :- cond(n, c).
+sub(n, c) :- sub(n, $Not(c)).
+.decl point(p: Point, n: number)
+point(p, -3) :- sub(_, $At(p)).
+.decl color(n: symbol, c: Color)
+color(n, c) :- sub(n, $Paint(c)).
+.decl list(n: symbol, l: List)
+list("a", [1, [2, nil]]). list("b", nil).
+.output sub, point, color, list

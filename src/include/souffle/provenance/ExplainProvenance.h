@@ -27,8 +27,10 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -44,6 +46,29 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+/** A step from a record or ADT value to one of its fields or branch arguments */
+struct ValueStep {
+    /** 'r' for a record field, '+' for an ADT branch argument */
+    char kind;
+    /** Branch the ADT value must have; unused for records */
+    RamDomain branchId;
+    /** Number of fields of the record, or arguments of the branch */
+    std::size_t arity;
+    /** Index of the field or argument */
+    std::size_t index;
+};
+
+/** Position in a query: an atom with variables, one of its attributes, and steps into its value */
+struct QueryPosition {
+    std::size_t atom;
+    std::size_t attr;
+    std::vector<ValueStep> steps;
+};
+
+/** Resolves a position in the current query product, or nothing if the value does not have the shape
+ * the position steps through (e.g. another ADT branch, or nil) */
+using QueryValueAt = std::function<std::optional<RamDomain>(const QueryPosition&)>;
+
 /** Equivalence class for variables in query command */
 class Equivalence {
 public:
@@ -54,11 +79,10 @@ public:
      * Constructor for Equvialence class
      * @param t, type qualifier of the variable (e.g. "i:number")
      * @param s, symbol of the variable
-     * @param idx, first occurence of the variable
+     * @param pos, first occurence of the variable
      * */
-    Equivalence(std::string t, std::string s, std::pair<std::size_t, std::size_t> idx)
-            : type(std::move(t)), symbol(std::move(s)) {
-        indices.push_back(idx);
+    Equivalence(std::string t, std::string s, QueryPosition pos) : type(std::move(t)), symbol(std::move(s)) {
+        positions.push_back(std::move(pos));
     }
 
     /** Copy constructor */
@@ -67,30 +91,26 @@ public:
     /** Copy assignment operator */
     Equivalence& operator=(const Equivalence& o) = default;
 
-    /** Add index at the end of indices vector */
-    void push_back(std::pair<std::size_t, std::size_t> idx) {
-        indices.push_back(idx);
+    /** Add position at the end of positions vector */
+    void push_back(QueryPosition pos) {
+        positions.push_back(std::move(pos));
     }
 
-    /** Verify if elements at the indices are equivalent in the given product */
-    bool verify(const std::vector<tuple>& product) const {
-        for (std::size_t i = 1; i < indices.size(); ++i) {
-            if (product[indices[i].first][indices[i].second] !=
-                    product[indices[i - 1].first][indices[i - 1].second]) {
-                return false;
-            }
-        }
-        return true;
+    /** Verify if values at the positions exist and are equivalent in the current product */
+    bool verify(const QueryValueAt& valueAt) const {
+        const auto first = valueAt(positions[0]);
+        return first && std::all_of(positions.begin() + 1, positions.end(),
+                                [&](const QueryPosition& pos) { return valueAt(pos) == first; });
     }
 
-    /** Extract index of the first occurrence of the varible */
-    const std::pair<std::size_t, std::size_t>& getFirstIdx() const {
-        return indices[0];
+    /** Extract position of the first occurrence of the varible */
+    const QueryPosition& getFirstPosition() const {
+        return positions[0];
     }
 
-    /** Get indices of equivalent variables */
-    const std::vector<std::pair<std::size_t, std::size_t>>& getIndices() const {
-        return indices;
+    /** Get positions of equivalent variables */
+    const std::vector<QueryPosition>& getPositions() const {
+        return positions;
     }
 
     /** Get the type qualifier of the variable of the equivalence class, whose first character is
@@ -109,7 +129,7 @@ public:
 private:
     std::string type;
     std::string symbol;
-    std::vector<std::pair<std::size_t, std::size_t>> indices;
+    std::vector<QueryPosition> positions;
 };
 
 /** Constant constraints for values in query command */
@@ -122,28 +142,27 @@ public:
     ~ConstConstraint() = default;
 
     /** Add constant constraint at the end of constConstrs vector */
-    void push_back(std::pair<std::pair<std::size_t, std::size_t>, RamDomain> constr) {
-        constConstrs.push_back(constr);
+    void push_back(std::pair<QueryPosition, RamDomain> constr) {
+        constConstrs.push_back(std::move(constr));
     }
 
-    /** Verify if the query product satisfies constant constraint */
-    bool verify(const std::vector<tuple>& product) const {
-        return std::all_of(constConstrs.begin(), constConstrs.end(), [&product](auto constr) {
-            return product[constr.first.first][constr.first.second] == constr.second;
-        });
+    /** Verify if the current query product satisfies constant constraint */
+    bool verify(const QueryValueAt& valueAt) const {
+        return std::all_of(constConstrs.begin(), constConstrs.end(),
+                [&](const auto& constr) { return valueAt(constr.first) == constr.second; });
     }
 
     /** Get the constant constraint vector */
-    std::vector<std::pair<std::pair<std::size_t, std::size_t>, RamDomain>>& getConstraints() {
+    std::vector<std::pair<QueryPosition, RamDomain>>& getConstraints() {
         return constConstrs;
     }
 
-    const std::vector<std::pair<std::pair<std::size_t, std::size_t>, RamDomain>>& getConstraints() const {
+    const std::vector<std::pair<QueryPosition, RamDomain>>& getConstraints() const {
         return constConstrs;
     }
 
 private:
-    std::vector<std::pair<std::pair<std::size_t, std::size_t>, RamDomain>> constConstrs;
+    std::vector<std::pair<QueryPosition, RamDomain>> constConstrs;
 };
 
 /** utility function to split a string */
@@ -365,45 +384,48 @@ protected:
         }
     }
 
-    // Note: reading a record or ADT value may add a new entry to the record table, in which
-    // case no tuple contains it.
-    RamDomain recordRead(const std::string& type, const std::string& value) const {
+    /** A record literal split into its fields, or an ADT literal split into its branch arguments */
+    struct ValueParts {
+        std::vector<std::string> args;
+        std::vector<std::string> argTypes;
+        /** ADTs only */
+        RamDomain branchId = 0;
+        bool isEnum = false;
+    };
+
+    /** Split a record literal other than nil into its fields, see recordRead */
+    ValueParts recordParts(const std::string& type, const std::string& value) const {
         auto&& recordInfo = types["records"][type];
         if (recordInfo.is_null()) {
             fatal("no type information for record type `%s`", type);
         }
-        if (value == "nil") {
-            return 0;
-        }
 
-        auto&& fieldTypes = recordInfo["types"].array_items();
-        std::vector<std::string> fields;
+        ValueParts parts;
+        for (auto&& fieldType : recordInfo["types"].array_items()) {
+            parts.argTypes.push_back(fieldType.string_value());
+        }
         if (value.size() < 2 || value[0] != '[' || value.back() != ']' ||
-                !splitValues(value.substr(1, value.size() - 2), fields) ||
-                fields.size() != fieldTypes.size()) {
+                !splitValues(value.substr(1, value.size() - 2), parts.args) ||
+                parts.args.size() != parts.argTypes.size()) {
             throw ExplainValueError(tfm::format("expected a record of type `%s`, got `%s`", type, value));
         }
-
-        std::vector<RamDomain> nums;
-        for (std::size_t i = 0; i < fieldTypes.size(); ++i) {
-            nums.push_back(valueRead(fieldTypes[i].string_value(), fields[i]));
-        }
-        return prog.getRecordTable().pack(nums.data(), nums.size());
+        return parts;
     }
 
-    RamDomain adtRead(const std::string& type, const std::string& value) const {
+    /** Split an ADT literal into its branch arguments, see adtRead */
+    ValueParts adtParts(const std::string& type, const std::string& value) const {
         auto&& adtInfo = types["ADTs"][type];
         if (adtInfo.is_null()) {
             fatal("no type information for ADT type `%s`", type);
         }
 
         // $Branch or $Branch(arg, ...)
+        ValueParts parts;
         const auto open = value.find('(');
-        std::vector<std::string> args;
         if (value.size() < 2 || value[0] != '$' ||
                 (open != std::string::npos &&
                         (value.back() != ')' ||
-                                !splitValues(value.substr(open + 1, value.size() - open - 2), args)))) {
+                                !splitValues(value.substr(open + 1, value.size() - open - 2), parts.args)))) {
             throw ExplainValueError(tfm::format("expected an ADT value of type `%s`, got `%s`", type, value));
         }
         const std::string name = value.substr(1, open == std::string::npos ? open : open - 1);
@@ -414,24 +436,70 @@ protected:
         if (branch == branches.end()) {
             throw ExplainValueError(tfm::format("`%s` is not a branch of ADT type `%s`", name, type));
         }
-        const auto branchId = static_cast<RamDomain>(branch - branches.begin());
+        parts.branchId = static_cast<RamDomain>(branch - branches.begin());
+        parts.isEnum = adtInfo["enum"].bool_value();
 
-        auto&& branchTypes = (*branch)["types"].array_items();
-        if (args.size() != branchTypes.size()) {
-            throw ExplainValueError(tfm::format("branch `%s` of ADT type `%s` takes %d argument(s), got `%s`",
-                    name, type, branchTypes.size(), value));
+        for (auto&& argType : (*branch)["types"].array_items()) {
+            parts.argTypes.push_back(argType.string_value());
         }
+        if (parts.args.size() != parts.argTypes.size()) {
+            throw ExplainValueError(tfm::format("branch `%s` of ADT type `%s` takes %d argument(s), got `%s`",
+                    name, type, parts.argTypes.size(), value));
+        }
+        return parts;
+    }
+
+    // Note: reading a record or ADT value may add a new entry to the record table, in which
+    // case no tuple contains it.
+    RamDomain recordRead(const std::string& type, const std::string& value) const {
+        if (value == "nil") {
+            if (types["records"][type].is_null()) {
+                fatal("no type information for record type `%s`", type);
+            }
+            return 0;
+        }
+
+        const ValueParts parts = recordParts(type, value);
+        std::vector<RamDomain> nums;
+        for (std::size_t i = 0; i < parts.args.size(); ++i) {
+            nums.push_back(valueRead(parts.argTypes[i], parts.args[i]));
+        }
+        return prog.getRecordTable().pack(nums.data(), nums.size());
+    }
+
+    RamDomain adtRead(const std::string& type, const std::string& value) const {
+        const ValueParts parts = adtParts(type, value);
 
         // See adtShow for the encoding.
-        if (adtInfo["enum"].bool_value()) {
-            return branchId;
+        if (parts.isEnum) {
+            return parts.branchId;
         }
         std::vector<RamDomain> nums;
-        for (std::size_t i = 0; i < branchTypes.size(); ++i) {
-            nums.push_back(valueRead(branchTypes[i].string_value(), args[i]));
+        for (std::size_t i = 0; i < parts.args.size(); ++i) {
+            nums.push_back(valueRead(parts.argTypes[i], parts.args[i]));
         }
         RamDomain payload = nums.size() == 1 ? nums[0] : prog.getRecordTable().pack(nums.data(), nums.size());
-        return prog.getRecordTable().pack({branchId, payload});
+        return prog.getRecordTable().pack({parts.branchId, payload});
+    }
+
+    /** Follow a step into a record or ADT value, see adtShow for the ADT encoding */
+    std::optional<RamDomain> valueStep(RamDomain value, const ValueStep& step) const {
+        const RecordTable& recordTable = prog.getRecordTable();
+        if (step.kind == 'r') {
+            if (value == 0) {
+                return std::nullopt;
+            }
+            return recordTable.unpack(value, step.arity)[step.index];
+        }
+        // Enumerations and branches without arguments have no steps
+        const RamDomain* tuple = recordTable.unpack(value, 2);
+        if (tuple[0] != step.branchId) {
+            return std::nullopt;
+        }
+        if (step.arity == 1) {
+            return tuple[1];
+        }
+        return recordTable.unpack(tuple[1], step.arity)[step.index];
     }
 
 public:

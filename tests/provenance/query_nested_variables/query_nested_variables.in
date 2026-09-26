@@ -1,0 +1,14 @@
+query sub(n, $Paint(c))
+query sub(n, $Eq(k, v))
+;
+query sub(n, $Eq("os", v))
+query sub(n, $Not($Eq(k, "linux")))
+query sub(n, $At([x, y]))
+query point([x, y], n)
+query list(n, [h, t])
+query list(n, [1, [h, nil]])
+query list(n, [1, [h, [3, nil]]])
+query sub(n, $Eq(k, k))
+query cond(n, $Eq(k, v)), sub(m, $Eq(k, v))
+query cond(n, $Eq(k, v)), sub(m, $Not($Eq(k, v)))
+exit

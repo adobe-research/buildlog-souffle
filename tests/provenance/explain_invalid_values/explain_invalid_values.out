@@ -5,8 +5,8 @@ expected a number, got `"x"`
 cond("paint", $Paint($Green)) 
 --------------------------(R1)
  sub("paint", $Paint($Green)) 
-expected an ADT value of type `+:Color`, got `c2`
-expected a record of type `r:List`, got `l`
+branch `Paint` of ADT type `+:Cond` takes 1 argument(s), got `$Paint(c, d)`
+expected a record of type `r:List`, got `[1, l, m]`
 `Nope` is not a branch of ADT type `+:Cond`
 expected a float, got `"x"`
 n = a.
