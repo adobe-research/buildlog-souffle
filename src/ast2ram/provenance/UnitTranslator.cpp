@@ -20,9 +20,12 @@
 #include "ast/Attribute.h"
 #include "ast/BinaryConstraint.h"
 #include "ast/Clause.h"
+#include "ast/Constant.h"
 #include "ast/Constraint.h"
 #include "ast/Relation.h"
 #include "ast/TypeCast.h"
+#include "ast/UnnamedVariable.h"
+#include "ast/Variable.h"
 #include "ast/transform/IOAttributes.h"
 #include "ast/utility/Utils.h"
 #include "ast/utility/Visitor.h"
@@ -53,6 +56,8 @@
 #include "ram/UndefValue.h"
 #include "souffle/SymbolTable.h"
 #include "souffle/utility/StringUtil.h"
+#include <optional>
+#include <set>
 #include <sstream>
 
 namespace souffle::ast2ram::provenance {
@@ -495,12 +500,85 @@ Own<ram::Statement> UnitTranslator::makeNegationSubproofSubroutine(const ast::Cl
     std::size_t count = 0;
     std::map<std::size_t, std::string> idToVarName;
     auto dummyValueIndex = mk<ValueIndex>();
+    auto addVariable = [&](const std::string& name, std::size_t index) {
+        idToVarName[index] = name;
+        dummyValueIndex->addVarReference(name, index, 0);
+    };
+
+    // The explain runtime calls this subroutine with the head tuple (one value per head argument)
+    // followed by one value per remaining argument listed in the clause's info relation: arguments
+    // of positive body atoms, then operands of binary constraints. Mirror that layout here.
+    std::set<std::string> seenInfoArgs;
+    auto infoArgName = [](const ast::Argument* arg) -> std::optional<std::string> {
+        if (isA<ast::UnnamedVariable>(arg)) {
+            return std::nullopt;
+        }
+        if (const auto* var = as<ast::Variable>(arg)) {
+            return var->getName();
+        }
+        if (const auto* constant = as<ast::Constant>(arg)) {
+            const std::string repr = toString(*constant);
+            if (repr.empty() || repr[0] == '"' || isNumber(repr.c_str())) {
+                return std::nullopt;
+            }
+            return repr;
+        }
+        return "";
+    };
+    const auto headArgs = clause.getHead()->getArguments();
+    for (std::size_t i = 0; i < headArgs.size(); ++i) {
+        auto name = infoArgName(headArgs[i]);
+        if (!name.has_value() || name->empty() || seenInfoArgs.count(*name) > 0) {
+            continue;
+        }
+        seenInfoArgs.insert(*name);
+        if (isA<ast::Variable>(headArgs[i])) {
+            addVariable(*name, i);
+        }
+    }
+    count = headArgs.size();
+    auto addInfoArg = [&](const ast::Argument* arg, const ast::Argument* infoArg) {
+        auto name = infoArgName(infoArg);
+        if (!name.has_value()) {
+            return;
+        }
+        if (name->empty()) {
+            // Functors, records, aggregates and casts each get their own value slot
+            count++;
+            return;
+        }
+        if (seenInfoArgs.count(*name) > 0) {
+            return;
+        }
+        seenInfoArgs.insert(*name);
+        if (isA<ast::Variable>(arg)) {
+            addVariable(*name, count);
+        }
+        count++;
+    };
+    for (const auto* lit : clause.getBodyLiterals()) {
+        if (const auto* atom = as<ast::Atom>(lit)) {
+            for (const auto* arg : atom->getArguments()) {
+                addInfoArg(arg, arg);
+            }
+        }
+    }
+    for (const auto* constraint : ast::getBodyLiterals<ast::BinaryConstraint>(clause)) {
+        for (const auto* arg : {constraint->getLHS(), constraint->getRHS()}) {
+            const ast::Argument* unwrapped = arg;
+            while (const auto* cast = as<ast::TypeCast>(unwrapped)) {
+                unwrapped = cast->getValue();
+            }
+            addInfoArg(unwrapped, isA<ast::Variable>(unwrapped) ? unwrapped : arg);
+        }
+    }
+
+    // Variables that only occur nested inside other arguments are not supplied by the runtime
     visit(clause, [&](const ast::Variable& var) {
         if (dummyValueIndex->isDefined(var.getName()) || isPrefix("+underscore", var.getName())) {
             return;
         }
-        idToVarName[count] = var.getName();
-        dummyValueIndex->addVarReference(var.getName(), count++, 0);
+        addVariable(var.getName(), count++);
     });
 
     visit(clause, [&](const ast::Variable& var) {
@@ -509,9 +587,8 @@ Own<ram::Statement> UnitTranslator::makeNegationSubproofSubroutine(const ast::Cl
 
         // Index all unnamed variables
         // TODO (azreika): maybe don't unname variables in provenance
-        if (isPrefix("+underscore", var.getName())) {
-            idToVarName[count] = var.getName();
-            dummyValueIndex->addVarReference(var.getName(), count++, 0);
+        if (isPrefix("+underscore", var.getName()) && !dummyValueIndex->isDefined(var.getName())) {
+            addVariable(var.getName(), count++);
         }
     });
 

@@ -1,0 +1,36 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026 The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+// This code tests explainnegation for rules whose heads contain constants,
+// functors and repeated variables, which shift the subroutine arguments.
+
+.pragma "provenance" "explain"
+
+.decl p(t: symbol, o: symbol)
+p("app", "o1").
+
+.decl u(t: symbol, v: symbol)
+u("app", "D").
+
+.decl n(x: number)
+n(1).
+n(5).
+
+.decl flag(o: symbol, k: symbol, v: symbol)
+.output flag
+flag(o, "-D", v) :- p(t, o), u(t, v).
+
+.decl shifted(k: number, x: number)
+.output shifted
+shifted(0, x + 20) :- n(x), n(y), y > x.
+
+.decl same(o: symbol, o2: symbol, v: symbol)
+.output same
+same(o, o, v) :- p(t, o), u(t, v).
+
+.decl under(o: symbol, k: symbol)
+.output under
+under(o, "-U") :- u(_, v), p(t, o), u(t, v).
