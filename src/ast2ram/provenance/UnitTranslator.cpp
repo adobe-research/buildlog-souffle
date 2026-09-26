@@ -16,9 +16,13 @@
 #include "Global.h"
 #include "LogStatement.h"
 #include "RelationTag.h"
+#include "ast/Atom.h"
+#include "ast/Attribute.h"
 #include "ast/BinaryConstraint.h"
 #include "ast/Clause.h"
 #include "ast/Constraint.h"
+#include "ast/Relation.h"
+#include "ast/TypeCast.h"
 #include "ast/transform/IOAttributes.h"
 #include "ast/utility/Utils.h"
 #include "ast/utility/Visitor.h"
@@ -255,6 +259,55 @@ Own<ram::Sequence> UnitTranslator::generateInfoClauses(const ast::Program* progr
 
         // Generate clause head arguments
         VecOwn<ram::Expression> factArguments;
+        std::map<std::string, std::string> variableTypes;
+        auto recordVariableTypes = [&](const ast::Atom* atom) {
+            const ast::Relation* relation = program->getRelation(atom->getQualifiedName());
+            if (relation == nullptr) {
+                return;
+            }
+            const auto attributes = relation->getAttributes();
+            const auto args = atom->getArguments();
+            for (std::size_t i = 0; i < args.size(); ++i) {
+                if (const auto* var = as<ast::Variable>(args[i])) {
+                    variableTypes.emplace(
+                            var->getName(), context->getTypeQualifier(attributes[i]->getTypeName()));
+                }
+            }
+        };
+        auto getConstraintArgType = [&](const ast::Argument* arg) {
+            const ast::Argument* unwrapped = arg;
+            while (const auto* cast = as<ast::TypeCast>(unwrapped)) {
+                unwrapped = cast->getValue();
+            }
+            if (const auto* var = as<ast::Variable>(unwrapped)) {
+                auto it = variableTypes.find(var->getName());
+                if (it != variableTypes.end()) {
+                    return it->second;
+                }
+            }
+            return context->getArgumentTypeQualifier(*arg);
+        };
+        auto refineConstraintArgTypes = [](std::string& lhsType, std::string& rhsType) {
+            auto shouldUseOther = [](const std::string& type, const std::string& other) {
+                return !other.empty() &&
+                       (type.empty() || ((other[0] == 'r' || other[0] == '+') && type[0] != other[0]));
+            };
+            if (shouldUseOther(lhsType, rhsType)) {
+                lhsType = rhsType;
+            } else if (shouldUseOther(rhsType, lhsType)) {
+                rhsType = lhsType;
+            }
+        };
+        auto getConstraintArgInfo = [&](const ast::Argument* arg) -> std::string {
+            const ast::Argument* unwrapped = arg;
+            while (const auto* cast = as<ast::TypeCast>(unwrapped)) {
+                unwrapped = cast->getValue();
+            }
+            if (const auto* var = as<ast::Variable>(unwrapped)) {
+                return var->getName();
+            }
+            return getArgInfo(arg);
+        };
 
         // (1) Clause ID
         factArguments.push_back(mk<ram::SignedConstant>(clauseID));
@@ -267,12 +320,14 @@ Own<ram::Sequence> UnitTranslator::generateInfoClauses(const ast::Program* progr
         std::stringstream headVariableInfo;
         headVariableInfo << join(headVariables, ",");
         factArguments.push_back(mk<ram::StringConstant>(headVariableInfo.str()));
+        recordVariableTypes(clause->getHead());
 
         // (3) For all atoms || negs:
         //      - atoms: relName,{atom arg info}
         //      - negs: !relName
         for (const auto* literal : clause->getBodyLiterals()) {
             if (const auto* atom = as<ast::Atom>(literal)) {
+                recordVariableTypes(atom);
                 std::string atomDescription = toString(atom->getQualifiedName());
                 for (const auto* arg : atom->getArguments()) {
                     atomDescription.append("," + getArgInfo(arg));
@@ -286,12 +341,17 @@ Own<ram::Sequence> UnitTranslator::generateInfoClauses(const ast::Program* progr
         }
 
         // (4) For all bcs:
-        //      - symbol,lhs arg info,rhs arg info
+        //      - symbol,lhs arg info,rhs arg info,lhs type qualifier,rhs type qualifier
         for (const auto* binaryConstraint : ast::getBodyLiterals<ast::BinaryConstraint>(*clause)) {
+            std::string lhsType = getConstraintArgType(binaryConstraint->getLHS());
+            std::string rhsType = getConstraintArgType(binaryConstraint->getRHS());
+            refineConstraintArgTypes(lhsType, rhsType);
             std::stringstream constraintDescription;
             constraintDescription << toBinaryConstraintSymbol(binaryConstraint->getBaseOperator());
-            constraintDescription << "," << getArgInfo(binaryConstraint->getLHS());
-            constraintDescription << "," << getArgInfo(binaryConstraint->getRHS());
+            constraintDescription << "," << getConstraintArgInfo(binaryConstraint->getLHS());
+            constraintDescription << "," << getConstraintArgInfo(binaryConstraint->getRHS());
+            constraintDescription << "," << lhsType;
+            constraintDescription << "," << rhsType;
             factArguments.push_back(mk<ram::StringConstant>(constraintDescription.str()));
         }
 

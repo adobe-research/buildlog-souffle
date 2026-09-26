@@ -145,6 +145,8 @@ public:
     AggregateOp getOverloadedAggregatorOperator(const ast::IntrinsicAggregator& aggr) const;
     BinaryConstraintOp getOverloadedBinaryConstraintOperator(const ast::BinaryConstraint& bc) const;
     FunctorOp getOverloadedFunctorOp(const ast::IntrinsicFunctor& inf) const;
+    std::string getArgumentTypeQualifier(const ast::Argument& arg) const;
+    std::string getTypeQualifier(const ast::QualifiedName& typeName) const;
 
     /** Analyses */
     const ast::SipsMetric* getSipsMetric() const {

@@ -137,6 +137,7 @@ public:
         // recursively get nodes for subproofs
         std::size_t tupleCurInd = 0;
         auto bodyRelations = info.at(std::make_pair(relName, ruleNum));
+        const auto constraintVariableTypes = getRuleVariableTypes(relName, bodyRelations);
 
         // start from begin + 1 because the first element represents the head atom
         for (auto it = bodyRelations.begin() + 1; it < bodyRelations.end(); it++) {
@@ -189,18 +190,9 @@ public:
                 internalNode->setSize(internalNode->getSize() + 1);
                 // for a binary constraint, display the corresponding values and do not recurse
             } else if (isConstraint) {
-                std::stringstream joinedConstraint;
-
-                // FIXME: We need type info in order to figure out how to print arguments.
-                BinaryConstraintOp rawBinOp = toBinaryConstraintOp(bodyRel);
-                if (isOrderedBinaryConstraintOp(rawBinOp)) {
-                    joinedConstraint << subproofTuple[0] << " " << bodyRel << " " << subproofTuple[1];
-                } else {
-                    joinedConstraint << bodyRel << "(\"" << symTable.decode(subproofTuple[0]) << "\", \""
-                                     << symTable.decode(subproofTuple[1]) << "\")";
-                }
-
-                internalNode->add_child(mk<LeafNode>(joinedConstraint.str()));
+                auto atomRepresentation = splitString(bodyLiteral, ',');
+                internalNode->add_child(mk<LeafNode>(formatConstraint(
+                        bodyRel, subproofTuple, atomRepresentation, constraintVariableTypes)));
                 internalNode->setSize(internalNode->getSize() + 1);
                 // otherwise, for a normal tuple, recurse
             } else {
@@ -309,7 +301,11 @@ public:
 
             // atomRepresentation.begin() + 1 because the first element is the relation name of the atom
             // which is not relevant for finding variables
-            for (auto atomIt = atomRepresentation.begin() + 1; atomIt < atomRepresentation.end(); atomIt++) {
+            const bool isConstraint = contains(constraintList, atomRepresentation[0]);
+            const std::size_t atomEnd = isConstraint ? std::min<std::size_t>(3, atomRepresentation.size())
+                                                     : atomRepresentation.size();
+            for (std::size_t atomInd = 1; atomInd < atomEnd; ++atomInd) {
+                auto atomIt = atomRepresentation.begin() + atomInd;
                 if (!isVariable(*atomIt)) {
                     continue;
                 }
@@ -334,6 +330,7 @@ public:
 
         // atom meta information stored for the current rule
         auto atoms = info.at(std::make_pair(relName, ruleNum));
+        const auto constraintVariableTypes = getRuleVariableTypes(relName, atoms);
 
         // atoms[0] represents variables in the head atom
         auto headVariables = splitString(atoms[0], ',');
@@ -350,7 +347,11 @@ public:
 
             // atomRepresentation.begin() + 1 because the first element is the relation name of the atom
             // which is not relevant for finding variables
-            for (auto atomIt = atomRepresentation.begin() + 1; atomIt < atomRepresentation.end(); atomIt++) {
+            const bool isConstraint = contains(constraintList, atomRepresentation[0]);
+            const std::size_t atomEnd = isConstraint ? std::min<std::size_t>(3, atomRepresentation.size())
+                                                     : atomRepresentation.size();
+            for (std::size_t atomInd = 1; atomInd < atomEnd; ++atomInd) {
+                auto atomIt = atomRepresentation.begin() + atomInd;
                 if (!contains(uniqueVariables, *atomIt) && !contains(headVariables, *atomIt)) {
                     // ignore non-variables
                     if (!isVariable(*atomIt)) {
@@ -450,10 +451,10 @@ public:
             std::stringstream childLabel;
             if (isConstraint) {
                 // for a binary constraint, display the corresponding values and do not recurse
-                assert(atomRepresentation.size() == 3 && "not a binary constraint");
+                assert(atomRepresentation.size() >= 3 && "not a binary constraint");
 
-                childLabel << bodyVariables[atomRepresentation[1]] << " " << bodyRel << " "
-                           << bodyVariables[atomRepresentation[2]];
+                childLabel << formatConstraint(
+                        bodyRel, bodyVariables, atomRepresentation, isVariable, constraintVariableTypes);
             } else {
                 childLabel << bodyRel << "(";
                 for (std::size_t i = 1; i < atomRepresentation.size(); i++) {
@@ -815,6 +816,139 @@ private:
             fatal("Error string did not exist before call to `SymbolTable::findOrInsert`: `%s`", symbol);
         }
         return Res.first;
+    }
+
+    std::string constraintOperandType(
+            const std::vector<std::string>& atomRepresentation, std::size_t operand) const {
+        const std::size_t typeIndex = operand + 3;
+        if (typeIndex >= atomRepresentation.size()) {
+            return "";
+        }
+        return atomRepresentation[typeIndex];
+    }
+
+    std::string constraintOperandType(const std::vector<std::string>& atomRepresentation, std::size_t operand,
+            const std::map<std::string, std::string>& variableTypes) const {
+        const std::string& arg = atomRepresentation[operand + 1];
+        auto varType = variableTypes.find(arg);
+        if (varType != variableTypes.end()) {
+            return varType->second;
+        }
+        return constraintOperandType(atomRepresentation, operand);
+    }
+
+    static void refineConstraintTypes(std::string& lhsType, std::string& rhsType) {
+        auto shouldUseOther = [](const std::string& type, const std::string& other) {
+            return !other.empty() &&
+                   (type.empty() || ((other[0] == 'r' || other[0] == '+') && type[0] != other[0]));
+        };
+        if (shouldUseOther(lhsType, rhsType)) {
+            lhsType = rhsType;
+        } else if (shouldUseOther(rhsType, lhsType)) {
+            rhsType = lhsType;
+        }
+    }
+
+    std::string formatConstraint(const std::string& op, const std::vector<RamDomain>& values,
+            const std::vector<std::string>& atomRepresentation,
+            const std::map<std::string, std::string>& variableTypes) const {
+        std::string lhsType = constraintOperandType(atomRepresentation, 0, variableTypes);
+        std::string rhsType = constraintOperandType(atomRepresentation, 1, variableTypes);
+        refineConstraintTypes(lhsType, rhsType);
+        auto showOperand = [&](std::size_t operand) {
+            const std::string& type = operand == 0 ? lhsType : rhsType;
+            if (!type.empty()) {
+                return valueShow(type, values[operand]);
+            }
+            return tfm::format("%d", values[operand]);
+        };
+
+        BinaryConstraintOp rawBinOp = toBinaryConstraintOp(op);
+        if (isOrderedBinaryConstraintOp(rawBinOp)) {
+            return tfm::format("%s %s %s", showOperand(0), op, showOperand(1));
+        }
+
+        if (!lhsType.empty() && !rhsType.empty()) {
+            return tfm::format(
+                    "%s(%s, %s)", op, valueShow(lhsType, values[0]), valueShow(rhsType, values[1]));
+        }
+        return tfm::format("%s(\"%s\", \"%s\")", op, symTable.decode(values[0]), symTable.decode(values[1]));
+    }
+
+    template <typename IsVariable>
+    std::string formatConstraint(const std::string& op,
+            const std::map<std::string, std::string>& bodyVariables,
+            const std::vector<std::string>& atomRepresentation, IsVariable isVariable,
+            const std::map<std::string, std::string>& variableTypes) const {
+        std::string lhsType = constraintOperandType(atomRepresentation, 0, variableTypes);
+        std::string rhsType = constraintOperandType(atomRepresentation, 1, variableTypes);
+        refineConstraintTypes(lhsType, rhsType);
+        auto operand = [&](std::size_t index) {
+            const std::string& arg = atomRepresentation[index + 1];
+            auto var = bodyVariables.find(arg);
+            return isVariable(arg) && var != bodyVariables.end() ? var->second : arg;
+        };
+        auto showOperand = [&](std::size_t index) {
+            const std::string value = operand(index);
+            const std::string& type = index == 0 ? lhsType : rhsType;
+            if (type.empty()) {
+                return value;
+            }
+            try {
+                if (type[0] == 's' && (value.size() < 2 || value[0] != '"' || value.back() != '"')) {
+                    return valueShow(type, symTable.encode(value));
+                }
+                return valueShow(type, valueRead(type, value));
+            } catch (const ExplainValueError&) {
+                return value;
+            }
+        };
+
+        BinaryConstraintOp rawBinOp = toBinaryConstraintOp(op);
+        if (isOrderedBinaryConstraintOp(rawBinOp)) {
+            return tfm::format("%s %s %s", showOperand(0), op, showOperand(1));
+        }
+        return tfm::format("%s(%s, %s)", op, showOperand(0), showOperand(1));
+    }
+
+    static bool isInfoVariable(const std::string& arg) {
+        return !(isNumber(arg.c_str()) || arg.empty() || arg[0] == '"' || arg == "_" ||
+                 isPrefix("functor_", arg) || isPrefix("agg_", arg) || isPrefix("typecast_", arg) ||
+                 isPrefix("term_", arg));
+    }
+
+    std::map<std::string, std::string> getRuleVariableTypes(
+            const std::string& headRelName, const std::vector<std::string>& atoms) const {
+        std::map<std::string, std::string> variableTypes;
+        auto recordTypes = [&](const std::string& relationName, const std::vector<std::string>& args,
+                                   std::size_t firstArg) {
+            auto rel = prog.getRelation(relationName);
+            if (rel == nullptr) {
+                return;
+            }
+            for (std::size_t i = firstArg; i < args.size(); ++i) {
+                if (isInfoVariable(args[i])) {
+                    variableTypes.emplace(args[i], rel->getAttrType(i - firstArg));
+                }
+            }
+        };
+
+        if (atoms.empty()) {
+            return variableTypes;
+        }
+        recordTypes(headRelName, splitString(atoms[0], ','), 0);
+        for (auto it = atoms.begin() + 1; it < atoms.end(); ++it) {
+            auto atom = splitString(*it, ',');
+            if (atom.empty() || contains(constraintList, atom[0])) {
+                continue;
+            }
+            std::string relationName = atom[0];
+            if (!relationName.empty() && relationName[0] == '!') {
+                relationName = relationName.substr(1);
+            }
+            recordTypes(relationName, atom, 1);
+        }
+        return variableTypes;
     }
 
     std::tuple<int, int> findTuple(const std::string& relName, std::vector<RamDomain> tup) {

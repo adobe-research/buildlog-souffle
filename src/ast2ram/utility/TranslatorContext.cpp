@@ -125,7 +125,7 @@ std::size_t TranslatorContext::getClauseNum(const ast::Clause* clause) const {
 }
 
 std::string TranslatorContext::getAttributeTypeQualifier(const ast::QualifiedName& name) const {
-    return getTypeQualifier(typeEnv->getType(name));
+    return ast::analysis::getTypeQualifier(typeEnv->getType(name));
 }
 
 Own<ram::AbstractOperator> TranslatorContext::getLatticeTypeLubFunctor(
@@ -296,6 +296,18 @@ BinaryConstraintOp TranslatorContext::getOverloadedBinaryConstraintOperator(
 
 FunctorOp TranslatorContext::getOverloadedFunctorOp(const ast::IntrinsicFunctor& inf) const {
     return polyAnalysis->getOverloadedFunctionOp(inf);
+}
+
+std::string TranslatorContext::getArgumentTypeQualifier(const ast::Argument& arg) const {
+    const ast::analysis::TypeSet& types = typeAnalysis->getTypes(&arg);
+    if (types.isAll() || types.empty() || types.size() != 1) {
+        return "";
+    }
+    return ast::analysis::getTypeQualifier(*types.begin());
+}
+
+std::string TranslatorContext::getTypeQualifier(const ast::QualifiedName& typeName) const {
+    return ast::analysis::getTypeQualifier(typeEnv->getType(typeName));
 }
 
 bool TranslatorContext::isADTEnum(const ast::BranchInit* adt) const {

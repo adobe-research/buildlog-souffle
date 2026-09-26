@@ -1,0 +1,5 @@
+explain mismatched("release", "debug", 3, 1.5, 1.0, ["native.opt", "release"], $Eq("native.opt", "debug"), 1)
+explainnegation impossible("same")
+1
+same
+exit

@@ -1,0 +1,40 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026 The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+// This code tests typed constraint values in provenance explanations.
+
+.pragma "provenance" "explain"
+
+.type Pair = [key: symbol, value: symbol]
+.type Cond = Eq {key: symbol, value: symbol} | None {}
+
+.decl cfg(mode: symbol, expected: symbol, n: unsigned, f: float, min_f: float, p: Pair, c: Cond, x: number)
+cfg("release", "debug", 3, 1.5, 1.0, ["native.opt", "release"], $Eq("native.opt", "debug"), 1).
+
+.decl other_pair(p: Pair)
+other_pair(["native.opt", "debug"]).
+
+.decl mismatched(mode: symbol, expected: symbol, n: unsigned, f: float, min_f: float, p: Pair, c: Cond, x: number)
+.output mismatched
+mismatched(mode, expected, n, f, min_f, p, c, x) :-
+    cfg(mode, expected, n, f, min_f, p, c, x),
+    other_pair(q),
+    mode != expected,
+    mode = "release",
+    expected < mode,
+    f > min_f,
+    n >= 2,
+    p = ["native.opt", "release"],
+    p != q,
+    c != $Eq("native.opt", "release"),
+    x < 5.
+
+.decl sym(s: symbol)
+sym("same").
+
+.decl impossible(a: symbol)
+.output impossible
+impossible(a) :- sym(a), sym(b), a != b.
