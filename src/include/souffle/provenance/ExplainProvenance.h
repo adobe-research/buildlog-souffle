@@ -45,12 +45,12 @@ public:
 
     /**
      * Constructor for Equvialence class
-     * @param t, type of the variable
+     * @param t, type qualifier of the variable (e.g. "i:number")
      * @param s, symbol of the variable
      * @param idx, first occurence of the variable
      * */
-    Equivalence(char t, std::string s, std::pair<std::size_t, std::size_t> idx)
-            : type(t), symbol(std::move(s)) {
+    Equivalence(std::string t, std::string s, std::pair<std::size_t, std::size_t> idx)
+            : type(std::move(t)), symbol(std::move(s)) {
         indices.push_back(idx);
     }
 
@@ -86,11 +86,11 @@ public:
         return indices;
     }
 
-    /** Get type of the variable of the equivalence class,
-     * 'i' for RamSigned, 's' for symbol
-     * 'u' for RamUnsigned, 'f' for RamFloat
+    /** Get the type qualifier of the variable of the equivalence class, whose first character is
+     * 'i' for RamSigned, 's' for symbol, 'u' for RamUnsigned, 'f' for RamFloat,
+     * 'r' for records and '+' for ADTs
      */
-    char getType() const {
+    const std::string& getType() const {
         return type;
     }
 
@@ -100,7 +100,7 @@ public:
     }
 
 private:
-    char type;
+    std::string type;
     std::string symbol;
     std::vector<std::pair<std::size_t, std::size_t>> indices;
 };

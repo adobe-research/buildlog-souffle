@@ -640,14 +640,14 @@ public:
             bool containVar = false;
             for (std::size_t j = 0; j < rel.second.size(); ++j) {
                 // arg is a variable
-                if (std::regex_match(rel.second[j], argsMatcher, varRegex)) {
+                if (rel.second[j] != "nil" && std::regex_match(rel.second[j], argsMatcher, varRegex)) {
                     containVar = true;
                     auto nameToEquivalenceIter = nameToEquivalence.find(argsMatcher[0]);
                     // if variable has not shown up before, create an equivalence class for add it to
                     // nameToEquivalence map, otherwise add its indices to corresponding equivalence class
                     if (nameToEquivalenceIter == nameToEquivalence.end()) {
                         nameToEquivalence.insert(
-                                {argsMatcher[0], Equivalence(*(relation->getAttrType(j)), argsMatcher[0],
+                                {argsMatcher[0], Equivalence(relation->getAttrType(j), argsMatcher[0],
                                                          std::make_pair(idx, j))});
                     } else {
                         nameToEquivalenceIter->second.push_back(std::make_pair(idx, j));
@@ -689,6 +689,8 @@ public:
                         }
                         rd = ramBitCast(RamUnsignedFromString(rel.second[j]));
                         break;
+                    case 'r':
+                    case '+': rd = valueRead(relation->getAttrType(j), rel.second[j]); break;
                     default: continue;
                 }
 
@@ -856,12 +858,14 @@ private:
                     auto raw = element[idx.first][idx.second];
 
                     solution << var.second.getSymbol() << " = ";
-                    switch (var.second.getType()) {
+                    switch (var.second.getType()[0]) {
                         case 'i': solution << ramBitCast<RamSigned>(raw); break;
                         case 'f': solution << ramBitCast<RamFloat>(raw); break;
                         case 'u': solution << ramBitCast<RamUnsigned>(raw); break;
                         case 's': solution << prog.getSymbolTable().decode(raw); break;
-                        default: fatal("invalid type: `%c`", var.second.getType());
+                        case 'r':
+                        case '+': solution << valueShow(var.second.getType(), raw); break;
+                        default: fatal("invalid type: `%s`", var.second.getType());
                     }
 
                     if (++c < nameToEquivalence.size()) {

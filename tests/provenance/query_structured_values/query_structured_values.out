@@ -1,0 +1,14 @@
+c = $Eq("os", "linux")
+c = $Not($Eq("os", "linux")).
+n = not.
+n = top.
+n = -3, p = [1, 2.500000].
+c = $Green, n = paint.
+n = b.
+l = [1, [2, nil]], n = a
+l = nil, n = b.
+c = $Eq("cpu", "x86"), n = eq.
+true.
+false.
+Tuple sub("eq", $Eq("cpu", "arm")) does not exist
+Usage: query <relation1>(<element1>, <element2>, ...), <relation2>(<element1>, <element2>, ...), ...

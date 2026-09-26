@@ -1,0 +1,14 @@
+query sub("not", c)
+;
+query sub(n, $Eq("os", "linux"))
+query sub(n, $Top)
+query point(p, n)
+query color(n, c)
+query list(n, nil)
+query list(n, l)
+;
+query cond(n, $Eq("cpu", "x86")), sub(n, c)
+query sub("eq", $Eq("cpu", "x86"))
+query sub("eq", $Eq("cpu", "arm"))
+query sub(n
+exit
