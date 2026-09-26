@@ -1,0 +1,10 @@
+{ "proof":
+	{ "premises": "b(1, \"back\\\\slash; \\\"quoted\\\"\")",
+	  "rule-number": "(R1)",
+	  "children": [
+		{ "axiom": "a(1, \"back\\\\slash; \\\"quoted\\\"\")"},
+		{ "axiom": "\"back\\\\slash; \\\"quoted\\\"\" != \"semi;colon\\ttab\\r\\a\""}	]
+	},"rules": [
+	{ "rule-number": "(R1)", "rule": "b(k,x) :- \n   a(k,x),\n   x != \"semi;colon\ttab\r\u0007\"."}
+]
+}

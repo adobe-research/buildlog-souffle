@@ -611,8 +611,8 @@ public:
             } else {
                 os << ",\n";
             }
-            os << "\t{ \"rule-number\": \"(R" << cur.first.second << ")\", \"rule\": \""
-               << stringify(cur.second) << "\"}";
+            os << "\t{ \"rule-number\": \"(R" << cur.first.second << ")\", \"rule\": "
+               << json11::Json(cur.second).dump() << "}";
         }
         os << "\n]\n";
     }

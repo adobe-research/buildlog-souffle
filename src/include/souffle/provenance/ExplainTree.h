@@ -18,6 +18,7 @@
 
 #include "souffle/utility/ContainerUtil.h"
 #include "souffle/utility/StringUtil.h"
+#include "souffle/utility/json11.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -174,8 +175,8 @@ public:
     // print JSON
     void printJSON(std::ostream& os, int pos) override {
         std::string tab(pos, '\t');
-        os << tab << R"({ "premises": ")" << stringify(txt) << "\",\n";
-        os << tab << R"(  "rule-number": ")" << label << "\",\n";
+        os << tab << R"({ "premises": )" << json11::Json(txt).dump() << ",\n";
+        os << tab << R"(  "rule-number": )" << json11::Json(label).dump() << ",\n";
         os << tab << "  \"children\": [\n";
         bool first = true;
         for (const Own<TreeNode>& k : children) {
@@ -220,7 +221,7 @@ public:
     // print JSON
     void printJSON(std::ostream& os, int pos) override {
         std::string tab(pos, '\t');
-        os << tab << R"({ "axiom": ")" << stringify(txt) << "\"}";
+        os << tab << R"({ "axiom": )" << json11::Json(txt).dump() << "}";
     }
 };
 

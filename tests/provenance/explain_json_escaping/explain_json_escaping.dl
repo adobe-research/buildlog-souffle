@@ -1,0 +1,17 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026 The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+// This code tests that JSON proofs are valid JSON when symbols contain
+// backslashes, quotes, semicolons and control characters.
+
+.pragma "provenance" "explain"
+
+.decl a(k: number, x: symbol)
+a(1, "back\\slash; \"quoted\"").
+
+.decl b(k: number, x: symbol)
+.output b
+b(k, x) :- a(k, x), x != "semi;colon\ttab\r\a".
