@@ -1,0 +1,19 @@
+explainnegation needs_debug("app")
+nope
+explainnegation needs_debug("app")
+0
+explainnegation needs_debug("app")
+2
+explainnegation needs_debug("app")
+1
+not_a_record
+$Eq("native.opt", "release")
+1.5
+7
+explainnegation needs_debug("app")
+1
+["native.opt", "release"]
+$Eq("native.opt", "release")
+1.5
+7
+exit

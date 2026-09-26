@@ -1,0 +1,31 @@
+// Souffle - A Datalog Compiler
+// Copyright (c) 2026 The Souffle Developers. All rights reserved
+// Licensed under the Universal Permissive License v 1.0 as shown at:
+// - https://opensource.org/licenses/UPL
+// - <souffle root>/licenses/SOUFFLE-UPL.txt
+
+// This code tests typed values and invalid input handling in explainnegation.
+
+.pragma "provenance" "explain"
+
+.type Pair = [key: symbol, value: symbol]
+.type Cond = Eq {key: symbol, value: symbol} | None {}
+
+.decl cfg(name: symbol, p: Pair, c: Cond, f: float, u: unsigned)
+cfg("app", ["native.opt", "release"], $Eq("native.opt", "release"), 1.5, 7).
+
+.decl want_pair(p: Pair)
+want_pair(["native.opt", "debug"]).
+
+.decl want_cond(c: Cond)
+want_cond($Eq("native.opt", "debug")).
+
+.decl want_float(f: float)
+want_float(2.0).
+
+.decl want_unsigned(u: unsigned)
+want_unsigned(10).
+
+.decl needs_debug(name: symbol)
+.output needs_debug
+needs_debug(name) :- cfg(name, p, c, f, u), want_pair(p), want_cond(c), want_float(f), want_unsigned(u).

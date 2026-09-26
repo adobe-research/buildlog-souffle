@@ -326,7 +326,7 @@ public:
         std::vector<std::string> uniqueVariables;
 
         // we also need to know the type of each variable
-        std::map<std::string, char> variableTypes;
+        std::map<std::string, std::string> variableTypes;
 
         // atom meta information stored for the current rule
         auto atoms = info.at(std::make_pair(relName, ruleNum));
@@ -366,9 +366,12 @@ public:
                         assert(currentRel != nullptr &&
                                 ("relation " + atomRepresentation[0] + " doesn't exist").c_str());
                         variableTypes[*atomIt] =
-                                *currentRel->getAttrType(atomIt - atomRepresentation.begin() - 1);
+                                currentRel->getAttrType(atomIt - atomRepresentation.begin() - 1);
                     } else if (atomIt->find("agg_") != std::string::npos) {
-                        variableTypes[*atomIt] = 'i';
+                        variableTypes[*atomIt] = "i:number";
+                    } else if (atomRepresentation.size() >= 5) {
+                        const std::size_t typeIndex = atomInd + 2;
+                        variableTypes[*atomIt] = atomRepresentation[typeIndex];
                     }
                 }
             }
@@ -389,7 +392,19 @@ public:
         while (varCounter < uniqueVariables.size()) {
             auto var = uniqueVariables[varCounter];
             auto varValue = bodyVariables[var];
-            if (variableTypes[var] == 's') {
+            const std::string type = variableTypes[var];
+            if (!type.empty() && type[0] == 's' &&
+                    (varValue.size() < 2 || varValue[0] != '"' || varValue.back() != '"')) {
+                // Backwards compatibility: explainnegation historically accepted unquoted symbols.
+                args.push_back(symTable.encode(varValue));
+            } else if (!type.empty()) {
+                args.push_back(valueRead(type, varValue));
+            } else if (varValue.size() >= 2 && varValue[0] == '"' && varValue[varValue.size() - 1] == '"') {
+                auto originalStr = varValue.substr(1, varValue.size() - 2);
+                args.push_back(symTable.encode(originalStr));
+            } else if (canBeParsedAsRamSigned(varValue)) {
+                args.push_back(ramBitCast(RamSignedFromString(varValue)));
+            } else {
                 if (varValue.size() >= 2 && varValue[0] == '"' && varValue[varValue.size() - 1] == '"') {
                     auto originalStr = varValue.substr(1, varValue.size() - 2);
                     args.push_back(symTable.encode(originalStr));
@@ -397,8 +412,6 @@ public:
                     // assume no quotation marks
                     args.push_back(symTable.encode(varValue));
                 }
-            } else {
-                args.push_back(std::stoi(varValue));
             }
 
             varCounter++;
@@ -410,8 +423,9 @@ public:
         // execute subroutine to get subproofs
         prog.executeSubroutine(relName + "_" + std::to_string(ruleNum) + "_negation_subproof", args, ret);
 
-        // ensure the subroutine returns the correct number of results
-        assert(ret.size() == atoms.size() - 1);
+        // The negation subroutine may omit unsupported body literals, such as
+        // constraints involving aggregators or range functors.
+        assert(ret.size() <= atoms.size() - 1);
 
         // construct tree nodes
         std::stringstream joinedArgsStr;

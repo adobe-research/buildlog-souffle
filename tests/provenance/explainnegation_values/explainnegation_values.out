@@ -1,0 +1,7 @@
+<nope> is not a valid rule number
+<0> is not a valid rule number
+<2> is not a valid rule number
+expected a record of type `r:Pair`, got `not_a_record`
+cfg("app", ["native.opt", "release"], $Eq("native.opt", "release"), 1.5, 7) ✓ want_pair(["native.opt", "release"]) x want_cond($Eq("native.opt", "release")) x want_float(1.5) x want_unsigned(7) x 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------(R1)
+                                                                                          needs_debug("app")                                                                                          
