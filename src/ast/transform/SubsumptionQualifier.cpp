@@ -33,6 +33,7 @@
 #include "ast/QualifiedName.h"
 #include "ast/RecordInit.h"
 #include "ast/Relation.h"
+#include "ast/SubsumptiveClause.h"
 #include "ast/TranslationUnit.h"
 #include "ast/TypeCast.h"
 #include "ast/UnnamedVariable.h"
@@ -51,6 +52,7 @@
 #include <ostream>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -60,17 +62,14 @@ bool SubsumptionQualifierTransformer::transform(TranslationUnit& translationUnit
     bool changed = false;
     Program& program = translationUnit.getProgram();
 
+    // Collect subsumptive heads once; scanning the program per relation is quadratic.
+    std::unordered_set<QualifiedName> subsumptiveHeads;
+    visit(program, [&](const ast::SubsumptiveClause& sClause) {
+        subsumptiveHeads.insert(sClause.getHead()->getQualifiedName());
+    });
     for (auto* relation : program.getRelations()) {
-        // Only concerned with default relations
-        if (relation->getRepresentation() != RelationRepresentation::DEFAULT) {
-            continue;
-        }
-        bool hasSubsumptiveRule = visitExists(program, [&](const ast::SubsumptiveClause& sClause) {
-            return sClause.getHead()->getQualifiedName() == relation->getQualifiedName();
-        });
-
-        // rewrite relation representation
-        if (relation->getRepresentation() == RelationRepresentation::DEFAULT && hasSubsumptiveRule) {
+        if (relation->getRepresentation() == RelationRepresentation::DEFAULT &&
+                subsumptiveHeads.count(relation->getQualifiedName()) > 0) {
             relation->setRepresentation(RelationRepresentation::BTREE_DELETE);
             changed = true;
         }

@@ -91,6 +91,7 @@
 #include <optional>
 #include <set>
 #include <typeinfo>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -111,6 +112,15 @@ private:
     const TypeEnvironment& typeEnv = tu.getAnalysis<TypeEnvironmentAnalysis>().getTypeEnvironment();
     const Program& program = tu.getProgram();
     ErrorReport& report = tu.getErrorReport();
+
+    // Heads of subsumptive clauses, collected once (a per-relation scan is quadratic).
+    std::unordered_set<QualifiedName> subsumptiveHeads = [&] {
+        std::unordered_set<QualifiedName> heads;
+        visit(program, [&](const ast::SubsumptiveClause& sClause) {
+            heads.insert(sClause.getHead()->getQualifiedName());
+        });
+        return heads;
+    }();
 
     void checkAtom(const Clause& parent, const Atom& atom);
     void checkLiteral(const Clause& parent, const Literal& literal);
@@ -766,9 +776,7 @@ void SemanticCheckerImpl::checkRelation(const Relation& relation) {
     }
 
     // check subsumption relations
-    bool hasSubsumptiveRule = visitExists(program, [&](const ast::SubsumptiveClause& sClause) {
-        return sClause.getHead()->getQualifiedName() == relation.getQualifiedName();
-    });
+    bool hasSubsumptiveRule = subsumptiveHeads.count(relation.getQualifiedName()) > 0;
     if (relation.getRepresentation() == RelationRepresentation::BTREE_DELETE && !hasSubsumptiveRule) {
         report.addWarning(WarnType::NoSubsumptiveRule,
                 "No subsumptive rule for relation " + toString(relation.getQualifiedName()),
