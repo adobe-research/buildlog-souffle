@@ -520,6 +520,12 @@ void Engine::executeMain() {
 }
 
 void Engine::generateIR() {
+    // The first call generates the main program and every subroutine; later
+    // calls (one per executeSubroutine, e.g. per provenance query step) have
+    // nothing to generate, so they skip the generator's walk of the program.
+    if (main != nullptr) {
+        return;
+    }
     const ram::Program& program = tUnit.getProgram();
     NodeGenerator generator(*this);
     if (subroutine.empty()) {
