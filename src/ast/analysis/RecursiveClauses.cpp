@@ -66,30 +66,70 @@ void RecursiveClausesAnalysis::run(const TranslationUnit& translationUnit) {
         }
     }
 
-    // Mapping from a relation to the set of transitively reachable relations
-    // it depends on, including itself.
-    std::map<uint32_t, std::set<uint32_t>> reachableRelation;
-
-    // called when we discoved that `head` transitively reach `reached`.
-    const std::function<void(uint32_t, uint32_t)> dfs = [&](uint32_t head, uint32_t reached) {
-        reachableRelation[head].emplace(reached);
-        for (uint32_t rel : relationUseRelation[reached]) {
-            if (reachableRelation[head].emplace(rel).second) {
-                // discovered that relation `rel` is reachabel from `head`
-                dfs(head, rel);
+    // A clause is recursive iff a relation it uses directly reaches (depends
+    // transitively on) its head, i.e. iff the two share a strongly connected
+    // component of the dependency graph. Components are found with Tarjan's
+    // algorithm (iterative), linear in the graph; a transitive closure per
+    // relation is quadratic or worse.
+    std::map<uint32_t, uint32_t> component;
+    {
+        std::map<uint32_t, uint32_t> index;
+        std::map<uint32_t, uint32_t> lowlink;
+        std::set<uint32_t> onStack;
+        std::vector<uint32_t> stack;
+        uint32_t counter = 0;
+        // (node, position of the next successor to visit)
+        std::vector<std::pair<uint32_t, std::set<uint32_t>::const_iterator>> work;
+        static const std::set<uint32_t> none;
+        const auto successors = [&](uint32_t node) -> const std::set<uint32_t>& {
+            auto it = relationUseRelation.find(node);
+            return it == relationUseRelation.end() ? none : it->second;
+        };
+        const auto enter = [&](uint32_t node) {
+            index[node] = lowlink[node] = counter++;
+            stack.push_back(node);
+            onStack.insert(node);
+            work.emplace_back(node, successors(node).begin());
+        };
+        for (const uint32_t root : relations) {
+            if (index.count(root) != 0) {
+                continue;
+            }
+            enter(root);
+            while (!work.empty()) {
+                auto& [node, next] = work.back();
+                if (next != successors(node).end()) {
+                    const uint32_t succ = *next++;
+                    if (index.count(succ) == 0) {
+                        enter(succ);
+                    } else if (onStack.count(succ) != 0) {
+                        lowlink[node] = std::min(lowlink[node], index[succ]);
+                    }
+                    continue;
+                }
+                const uint32_t done = node;
+                work.pop_back();
+                if (!work.empty()) {
+                    const uint32_t parent = work.back().first;
+                    lowlink[parent] = std::min(lowlink[parent], lowlink[done]);
+                }
+                if (lowlink[done] == index[done]) {
+                    uint32_t member = 0;
+                    do {
+                        member = stack.back();
+                        stack.pop_back();
+                        onStack.erase(member);
+                        component[member] = index[done];
+                    } while (member != done);
+                }
             }
         }
-    };
-
-    // Compute the transitive closure of reachable (dependencies) relations from each relation.
-    for (const uint32_t head : relations) {
-        // include itself in the closure
-        dfs(head, head);
     }
 
     for (const auto& [clause, rel] : clauseRelation) {
         for (const uint32_t used : clauseUseRelation[clause]) {
-            if (reachableRelation[used].count(rel) > 0) {
+            auto it = component.find(used);
+            if (it != component.end() && it->second == component.at(rel)) {
                 // clause is recursive
                 recursiveClauses.emplace(clause);
                 break;
