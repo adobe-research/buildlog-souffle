@@ -35,6 +35,7 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <typeinfo>
 #include <utility>
@@ -213,6 +214,20 @@ public:
         std::map<std::string, const ram::Relation*> map;
         visit(prog, [&](const ram::Relation& rel) { map[rel.getName()] = &rel; });
 
+        // The I/O operations of each relation, collected in one pass over the program
+        std::set<std::string> inputs;
+        std::set<std::string> outputs;
+        visit(prog, [&](const ram::IO& io) {
+            const std::string& op = io.get("operation");
+            if (op == "input") {
+                inputs.insert(io.getRelation());
+            } else if (op == "output" || op == "printsize") {
+                outputs.insert(io.getRelation());
+            } else {
+                assert("wrong i/o operation");
+            }
+        });
+
         // Build wrapper relations for Souffle's interface
         for (auto& relHandler : exec.getRelationMap()) {
             if (relHandler == nullptr) {
@@ -230,20 +245,8 @@ public:
 
             auto* interface = new RelInterface(interpreterRel, symTable, rel.getName(), types, attrNames, id);
             interfaces.push_back(interface);
-            bool input = false;
-            bool output = false;
-            visit(prog, [&](const ram::IO& io) {
-                if (map[io.getRelation()] == &rel) {
-                    const std::string& op = io.get("operation");
-                    if (op == "input") {
-                        input = true;
-                    } else if (op == "output" || op == "printsize") {
-                        output = true;
-                    } else {
-                        assert("wrong i/o operation");
-                    }
-                }
-            });
+            bool input = inputs.count(name) > 0;
+            bool output = outputs.count(name) > 0;
             addRelation(rel.getName(), *interface, input, output);
             id++;
         }
