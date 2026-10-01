@@ -77,31 +77,23 @@ std::vector<RelationSet> RelationScheduleAnalysis::computeRelationExpirySchedule
        of evaluating the SCC the set of alive relations. */
     std::size_t numSCCs = topsortSCCGraphAnalysis->order().size();
 
-    /* Alive set for each step */
-    std::vector<UnorderedRelationSet> alive(numSCCs);
     /* Resize expired relations sets */
     relationExpirySchedule.resize(numSCCs);
 
-    /* Compute all alive relations by iterating over all steps in reverse order
-       determine the dependencies */
+    /* The alive set only grows from step to step, so a single set suffices: the
+       relations expiring at a step are the predecessors not yet alive. (Keeping
+       one alive set per step, a copy of the previous one, is quadratic.) */
+    UnorderedRelationSet alive;
     for (std::size_t orderedSCC = 1; orderedSCC < numSCCs; orderedSCC++) {
-        /* Add alive set of previous step */
-        alive[orderedSCC].insert(alive[orderedSCC - 1].begin(), alive[orderedSCC - 1].end());
-
-        /* Add predecessors of relations computed in this step */
         auto scc = topsortSCCGraphAnalysis->order()[numSCCs - orderedSCC];
+        RelationSet& expired = relationExpirySchedule[numSCCs - orderedSCC];
         for (const Relation* r : sccGraph->getInternalRelations(scc)) {
             for (const Relation* predecessor : precedenceGraph->graph().predecessors(r)) {
-                alive[orderedSCC].insert(predecessor);
+                if (alive.insert(predecessor).second) {
+                    expired.insert(predecessor);
+                }
             }
         }
-
-        /* Compute expired relations in reverse topological order using the set difference of the alive sets
-           between steps. */
-        std::copy_if(alive[orderedSCC].begin(), alive[orderedSCC].end(),
-                std::inserter(relationExpirySchedule[numSCCs - orderedSCC],
-                        relationExpirySchedule[numSCCs - orderedSCC].end()),
-                [&](const Relation* r) { return alive[orderedSCC - 1].count(r) == 0; });
     }
 
     return relationExpirySchedule;
