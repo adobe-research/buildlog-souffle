@@ -36,8 +36,10 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <string>
+#include <utility>
 #include <vector>
 #ifdef _OPENMP
 #include <omp.h>
@@ -61,6 +63,13 @@ public:
 
     /** @brief Execute the main program */
     void executeMain();
+
+    /**
+     * @brief Read inputs from `factDir` and write outputs to `outputDir`
+     * instead of the directories given on the command line (-F, -D).
+     * Directives that name a directory of their own are unaffected.
+     */
+    void redirectIO(std::string factDir, std::string outputDir);
 
     /** @brief Execute the subroutine program */
     void executeSubroutine(
@@ -170,6 +179,12 @@ private:
 
     template <typename Rel>
     RamDomain evalErase(Rel& rel, const Erase& shadow, Context& ctxt);
+
+    /** @brief The directives of an I/O statement after redirectIO */
+    std::map<std::string, std::string> redirected(const std::map<std::string, std::string>& directives) const;
+
+    /** Directories replacing the command line's (-F, -D), if any */
+    std::optional<std::pair<std::string, std::string>> ioRedirect;
 
     /** Program */
     ram::TranslationUnit& tUnit;

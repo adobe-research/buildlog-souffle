@@ -1,0 +1,12 @@
+.decl edge(x:symbol, y:symbol)
+.input edge
+.decl path(x:symbol, y:symbol)
+.output path
+.decl total(n:number)
+.output total
+.decl id(x:symbol, n:number)
+.output id
+path(x, y) :- edge(x, y).
+path(x, z) :- path(x, y), edge(y, z).
+total(n) :- n = count : path(_, _).
+id(x, $) :- edge(x, _).

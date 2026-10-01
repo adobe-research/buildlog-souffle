@@ -561,6 +561,41 @@ Own<ram::transform::Transformer> ramTransformerSequence(Global& glb) {
     return ramTransform;
 }
 
+/**
+ * Evaluate the translated program once per request line read from standard
+ * input, `FACT-DIR<TAB>OUTPUT-DIR`, each time as a fresh run of the program
+ * with -F FACT-DIR -D OUTPUT-DIR would: a new engine with empty relations and
+ * symbol table. The program is parsed, checked and translated once. Prints
+ * `souffle-serve: ready` when the first request can be read, and
+ * `souffle-serve: done SECONDS` after each evaluation. Exits at end of input.
+ */
+static bool serveTranslationUnit(ram::TranslationUnit& ramTranslationUnit, std::size_t numThreadsOrZero) {
+    std::cout << "souffle-serve: ready" << std::endl;
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        const std::size_t tab = line.find('\t');
+        if (tab == std::string::npos || line.find('\t', tab + 1) != std::string::npos) {
+            std::cerr << "souffle-serve: expected FACT-DIR<TAB>OUTPUT-DIR, got: " << line << std::endl;
+            return false;
+        }
+        const std::string outputDir = line.substr(tab + 1);
+        if (!existDir(outputDir)) {
+            std::cerr << "output directory " << outputDir << " does not exists" << std::endl;
+            return false;
+        }
+        const auto start = std::chrono::high_resolution_clock::now();
+        {
+            interpreter::Engine engine(ramTranslationUnit, numThreadsOrZero);
+            engine.redirectIO(line.substr(0, tab), outputDir);
+            engine.executeMain();
+        }
+        const auto end = std::chrono::high_resolution_clock::now();
+        std::cout << "souffle-serve: done " << std::chrono::duration<double>(end - start).count()
+                  << std::endl;
+    }
+    return true;
+}
+
 bool interpretTranslationUnit(Global& glb, ram::TranslationUnit& ramTranslationUnit) {
     try {
         std::thread profiler;
@@ -575,6 +610,9 @@ bool interpretTranslationUnit(Global& glb, ram::TranslationUnit& ramTranslationU
 
         // configure and execute interpreter
         const std::size_t numThreadsOrZero = std::stoi(glb.config().get("jobs"));
+        if (glb.config().has("serve")) {
+            return serveTranslationUnit(ramTranslationUnit, numThreadsOrZero);
+        }
         Own<interpreter::Engine> interpreter(mk<interpreter::Engine>(ramTranslationUnit, numThreadsOrZero));
         interpreter->executeMain();
         // If the profiler was started, join back here once it exits.
@@ -725,6 +763,10 @@ std::vector<MainOption> getMainOptions() {
           "Enable the frequency counter in the profiler."},
       {"provenance", 't', "[ none | explain | explore ]", "", false,
           "Enable provenance instrumentation and interaction."},
+      {"serve", nextOptChar++, "", "", false,
+          "Interpret the program once per line `FACT-DIR<TAB>OUTPUT-DIR` read from standard "
+          "input, as if run with -F FACT-DIR -D OUTPUT-DIR, parsing and translating it only "
+          "once."},
       {"show", nextOptChar++, "[ <see-list> ]", "", true,
           "Print selected program information.\n"
           "Modes:\n"
@@ -857,6 +899,18 @@ int main(Global& glb, const char* souffle_executable) {
 
         if (glb.config().has("live-profile") && !glb.config().has("profile")) {
             glb.config().set("profile");
+        }
+
+        if (glb.config().has("serve")) {
+            for (const char* other : {"provenance", "profile", "live-profile", "compile", "compile-many",
+                         "dl-program", "generate", "generate-many", "swig", "show"}) {
+                if (glb.config().has(other)) {
+                    throw std::runtime_error(std::string("--serve cannot be combined with --") + other);
+                }
+            }
+            if (glb.config().has("output-dir", "-")) {
+                throw std::runtime_error("--serve cannot write outputs to stdout (-D -)");
+            }
         }
 
         /* if emit-statistics is set then check that the profiler is also set */

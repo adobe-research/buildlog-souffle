@@ -309,6 +309,24 @@ Engine::Engine(ram::TranslationUnit& tUnit, const std::size_t numberOfThreadsOrZ
           isa(tUnit.getAnalysis<ram::analysis::IndexAnalysis>()), recordTable(numOfThreads),
           symbolTable(numOfThreads), regexCache(numOfThreads) {}
 
+void Engine::redirectIO(std::string factDir, std::string outputDir) {
+    ioRedirect = std::make_pair(std::move(factDir), std::move(outputDir));
+}
+
+std::map<std::string, std::string> Engine::redirected(
+        const std::map<std::string, std::string>& directives) const {
+    std::map<std::string, std::string> out = directives;
+    const auto replace = [&](const std::string& key, const std::string& to) {
+        auto it = out.find(key);
+        if (it != out.end() && global.config().has(key) && it->second == global.config().get(key)) {
+            it->second = to;
+        }
+    };
+    replace("fact-dir", ioRedirect->first);
+    replace("output-dir", ioRedirect->second);
+    return out;
+}
+
 Engine::RelationHandle& Engine::getRelationHandle(const std::size_t idx) {
     return *relations[idx];
 }
@@ -1407,7 +1425,11 @@ RamDomain Engine::execute(const Node* node, Context& ctxt) {
         ESAC(LogSize)
 
         CASE(IO)
-            const auto& directive = cur.getDirectives();
+            std::map<std::string, std::string> redirectedDirective;
+            if (ioRedirect) {
+                redirectedDirective = redirected(cur.getDirectives());
+            }
+            const auto& directive = ioRedirect ? redirectedDirective : cur.getDirectives();
             const std::string& op = cur.get("operation");
             auto& rel = *shadow.getRelation();
 
