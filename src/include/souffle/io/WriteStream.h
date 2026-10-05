@@ -42,17 +42,17 @@ public:
     template <typename T>
     void writeAll(const T& relation) {
         if (summary) {
-            return writeSize(relation.size());
-        }
-        if (arity == 0) {
+            writeSize(relation.size());
+        } else if (arity == 0) {
             if (relation.begin() != relation.end()) {
                 writeNullary();
             }
-            return;
+        } else {
+            for (const auto& current : relation) {
+                writeNext(current);
+            }
         }
-        for (const auto& current : relation) {
-            writeNext(current);
-        }
+        finish();
     }
 
     template <typename T>
@@ -62,6 +62,9 @@ public:
 
 protected:
     const bool summary;
+
+    /** Called once all tuples are written; throws if the output could not be completed */
+    virtual void finish() {}
 
     virtual void writeNullary() = 0;
     virtual void writeNextTuple(const RamDomain* tuple) = 0;

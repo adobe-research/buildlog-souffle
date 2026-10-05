@@ -129,7 +129,10 @@ public:
     WriteFileCSV(const std::map<std::string, std::string>& rwOperation, const SymbolTable& symbolTable,
             const RecordTable& recordTable)
             : WriteStreamCSV(rwOperation, symbolTable, recordTable),
-              file(getFileName(rwOperation), std::ios::out | std::ios::binary) {
+              fileName(getFileName(rwOperation)), file(fileName, std::ios::out | std::ios::binary) {
+        if (!file) {
+            throw std::invalid_argument("Cannot open output file " + fileName);
+        }
         if (getOr(rwOperation, "headers", "false") == "true") {
             file << rwOperation.at("attributeNames") << std::endl;
         }
@@ -139,7 +142,15 @@ public:
     ~WriteFileCSV() override = default;
 
 protected:
+    const std::string fileName;
     std::ofstream file;
+
+    void finish() override {
+        file.flush();
+        if (!file) {
+            throw std::invalid_argument("Cannot write output file " + fileName);
+        }
+    }
 
     void writeNullary() override {
         file << "()\n";

@@ -1,0 +1,8 @@
+.decl a(x:number)
+.input a
+.decl f(x:number)
+.output f
+.decl g(x:number)
+.output g(IO=jsonfile)
+f(x) :- a(x).
+g(x) :- a(x).

@@ -8,3 +8,8 @@
 add_test(NAME serve_mode
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/serve_test.py
         $<TARGET_FILE:souffle> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/serve_mode)
+
+# --serve-deferred-output: selective outputs written later by DUMP.
+add_test(NAME serve_deferred_output
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/deferred_test.py
+        $<TARGET_FILE:souffle> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/serve_deferred)

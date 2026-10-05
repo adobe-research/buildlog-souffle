@@ -1,0 +1,8 @@
+.decl a(x:number)
+.input a
+.decl f(x:number)
+.output f
+.decl s(x:number)
+.output s(IO=stdout)
+f(x) :- a(x).
+s(x) :- a(x).

@@ -1,0 +1,9 @@
+// The writer of `bad` rejects its directives, which only shows when the output is written.
+.decl a(x:number)
+.input a
+.decl f(x:number)
+.output f
+.decl bad(x:number)
+.output bad(IO=file, rfc4180=true, delimiter="\"")
+f(x) :- a(x).
+bad(x) :- a(x).

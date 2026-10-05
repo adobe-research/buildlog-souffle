@@ -38,6 +38,7 @@
 #include <memory>
 #include <optional>
 #include <regex>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -70,6 +71,18 @@ public:
      * Directives that name a directory of their own are unaffected.
      */
     void redirectIO(std::string factDir, std::string outputDir);
+
+    /**
+     * @brief Defer output (serve mode with redirected I/O only). Outputs of relations not
+     * named in `immediate` are not written when executed; their directives and relations
+     * are recorded instead and the relations are not purged when they expire, so that
+     * dumpDeferred() can write them later. The caller must have checked that all those
+     * outputs use the file backend.
+     */
+    void deferOutputsExcept(std::set<std::string> immediate);
+
+    /** @brief Write the deferred outputs with their original directives; at most once */
+    void dumpDeferred();
 
     /** @brief Execute the subroutine program */
     void executeSubroutine(
@@ -185,6 +198,12 @@ private:
 
     /** Directories replacing the command line's (-F, -D), if any */
     std::optional<std::pair<std::string, std::string>> ioRedirect;
+
+    /** Deferred output state (see deferOutputsExcept); empty/unset unless enabled */
+    std::optional<std::set<std::string>> immediateOutputs;
+    std::vector<std::pair<std::map<std::string, std::string>, RelationWrapper*>> deferredOutputs;
+    std::set<const RelationWrapper*> deferredRelations;
+    bool deferredDumped = false;
 
     /** Program */
     ram::TranslationUnit& tUnit;

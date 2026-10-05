@@ -327,6 +327,26 @@ std::map<std::string, std::string> Engine::redirected(
     return out;
 }
 
+void Engine::deferOutputsExcept(std::set<std::string> immediate) {
+    assert(ioRedirect && "deferred output requires redirected I/O");
+    immediateOutputs = std::move(immediate);
+}
+
+void Engine::dumpDeferred() {
+    assert(!deferredDumped && "deferred outputs already dumped");
+    deferredDumped = true;
+    for (auto& [directive, rel] : deferredOutputs) {
+        try {
+            IOSystem::getInstance().getWriter(directive, getSymbolTable(), getRecordTable())->writeAll(*rel);
+        } catch (std::exception& e) {
+            std::cerr << e.what();
+            exit(EXIT_FAILURE);
+        }
+    }
+    deferredOutputs.clear();
+    deferredRelations.clear();
+}
+
 Engine::RelationHandle& Engine::getRelationHandle(const std::size_t idx) {
     return *relations[idx];
 }
@@ -1405,7 +1425,9 @@ RamDomain Engine::execute(const Node* node, Context& ctxt) {
 
         CASE(Clear)
             auto* rel = shadow.getRelation();
-            rel->purge();
+            if (deferredRelations.empty() || !deferredRelations.count(rel)) {
+                rel->purge();
+            }
             return true;
         ESAC(Clear)
 
@@ -1448,6 +1470,10 @@ RamDomain Engine::execute(const Node* node, Context& ctxt) {
                     std::cerr << "Error loading " << rel.getName() << " data: " << e.what() << "\n";
                     exit(EXIT_FAILURE);
                 }
+                return true;
+            } else if (op == "output" && immediateOutputs && !immediateOutputs->count(rel.getName())) {
+                deferredOutputs.emplace_back(directive, &rel);
+                deferredRelations.insert(&rel);
                 return true;
             } else if (op == "output" || op == "printsize") {
                 try {

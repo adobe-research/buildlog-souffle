@@ -73,8 +73,10 @@
 #include "interpreter/ProgInterface.h"
 #include "parser/ParserDriver.h"
 #include "ram/Node.h"
+#include "ram/IO.h"
 #include "ram/Program.h"
 #include "ram/TranslationUnit.h"
+#include "ram/utility/Visitor.h"
 #include "ram/transform/CollapseFilters.h"
 #include "ram/transform/Conditional.h"
 #include "ram/transform/EliminateDuplicates.h"
@@ -596,6 +598,138 @@ static bool serveTranslationUnit(ram::TranslationUnit& ramTranslationUnit, std::
     return true;
 }
 
+/**
+ * --serve with --serve-deferred-output. Requests are
+ *   FACT-DIR<TAB>OUTPUT-DIR                    full evaluation, as without the option
+ *   FACT-DIR<TAB>OUTPUT-DIR<TAB>defer=A,B      write the output relations A,B now (the list
+ *                                              may be empty); the other outputs are kept in
+ *                                              the retained engine
+ *   DUMP                                       write the kept outputs into the OUTPUT-DIR of
+ *                                              the last request, replying
+ *                                              `souffle-serve: dumped SECONDS`
+ * Only plain CSV file outputs can be deferred. Deferral keeps output relations from being purged
+ * at expiry; it is verified for ordinary translated programs, including subsumption.
+ * Any new request, or end of input, destroys the retained engine; DUMP releases it before
+ * replying. Any protocol misuse is reported on standard error and fails the server.
+ */
+static bool serveDeferredTranslationUnit(
+        ram::TranslationUnit& ramTranslationUnit, std::size_t numThreadsOrZero) {
+    // Output relation names and whether all their directives are plain CSV file outputs; built on
+    // the first deferred request only.
+    std::optional<std::map<std::string, bool>> outputs;
+    const auto collectOutputs = [&]() {
+        outputs.emplace();
+        visit(ramTranslationUnit.getProgram(), [&](const ram::IO& io) {
+            if (io.get("operation") != "output") {
+                return;
+            }
+            const auto& directives = io.getDirectives();
+            const auto kind = directives.find("IO");
+            // Only the plain CSV file writer checks that its output was opened and completed.
+            const bool file = kind != directives.end() && kind->second == "file" &&
+                              directives.find("compress") == directives.end();
+            auto [it, fresh] = outputs->emplace(io.getRelation(), file);
+            it->second = it->second && file;
+        });
+    };
+
+    std::cout << "souffle-serve: ready" << std::endl;
+    Own<interpreter::Engine> retained;
+    bool dumped = false;
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        if (line == "DUMP") {
+            if (retained == nullptr) {
+                std::cerr << "souffle-serve: DUMP without deferred outputs"
+                          << (dumped ? " (already dumped)" : "") << std::endl;
+                return false;
+            }
+            const auto start = std::chrono::high_resolution_clock::now();
+            retained->dumpDeferred();
+            retained.reset();
+            const auto end = std::chrono::high_resolution_clock::now();
+            dumped = true;
+            std::cout << "souffle-serve: dumped " << std::chrono::duration<double>(end - start).count()
+                      << std::endl;
+            continue;
+        }
+        retained.reset();
+        dumped = false;
+
+        const std::size_t tab = line.find('\t');
+        const std::size_t tab2 = tab == std::string::npos ? tab : line.find('\t', tab + 1);
+        if (tab == std::string::npos ||
+                (tab2 != std::string::npos && line.find('\t', tab2 + 1) != std::string::npos)) {
+            std::cerr << "souffle-serve: expected FACT-DIR<TAB>OUTPUT-DIR[<TAB>defer=NAMES] or DUMP, got: "
+                      << line << std::endl;
+            return false;
+        }
+        const std::string outputDir = line.substr(tab + 1, tab2 == std::string::npos ? tab2 : tab2 - tab - 1);
+        if (!existDir(outputDir)) {
+            std::cerr << "output directory " << outputDir << " does not exists" << std::endl;
+            return false;
+        }
+
+        bool defer = false;
+        std::set<std::string> immediate;
+        if (tab2 != std::string::npos) {
+            const std::string field = line.substr(tab2 + 1);
+            if (field.rfind("defer=", 0) != 0) {
+                std::cerr << "souffle-serve: unknown request field: " << field << std::endl;
+                return false;
+            }
+            const std::string list = field.substr(6);
+            for (std::size_t pos = 0; !list.empty();) {
+                const std::size_t comma = list.find(',', pos);
+                const std::string name = list.substr(pos, comma == std::string::npos ? comma : comma - pos);
+                if (name.empty()) {
+                    std::cerr << "souffle-serve: malformed relation list: " << field << std::endl;
+                    return false;
+                }
+                immediate.insert(name);
+                if (comma == std::string::npos) {
+                    break;
+                }
+                pos = comma + 1;
+            }
+            if (!outputs) {
+                collectOutputs();
+            }
+            for (const auto& name : immediate) {
+                if (!outputs->count(name)) {
+                    std::cerr << "souffle-serve: unknown output relation: " << name << std::endl;
+                    return false;
+                }
+            }
+            for (const auto& [name, file] : *outputs) {
+                if (!file && !immediate.count(name)) {
+                    std::cerr << "souffle-serve: cannot defer output relation " << name
+                              << ": only uncompressed IO=file CSV outputs can be deferred" << std::endl;
+                    return false;
+                }
+            }
+            defer = true;
+        }
+
+        const auto start = std::chrono::high_resolution_clock::now();
+        auto engine = mk<interpreter::Engine>(ramTranslationUnit, numThreadsOrZero);
+        engine->redirectIO(line.substr(0, tab), outputDir);
+        if (defer) {
+            engine->deferOutputsExcept(std::move(immediate));
+        }
+        engine->executeMain();
+        if (defer) {
+            retained = std::move(engine);
+        } else {
+            engine.reset();
+        }
+        const auto end = std::chrono::high_resolution_clock::now();
+        std::cout << "souffle-serve: done " << std::chrono::duration<double>(end - start).count()
+                  << std::endl;
+    }
+    return true;
+}
+
 bool interpretTranslationUnit(Global& glb, ram::TranslationUnit& ramTranslationUnit) {
     try {
         std::thread profiler;
@@ -611,6 +745,9 @@ bool interpretTranslationUnit(Global& glb, ram::TranslationUnit& ramTranslationU
         // configure and execute interpreter
         const std::size_t numThreadsOrZero = std::stoi(glb.config().get("jobs"));
         if (glb.config().has("serve")) {
+            if (glb.config().has("serve-deferred-output")) {
+                return serveDeferredTranslationUnit(ramTranslationUnit, numThreadsOrZero);
+            }
             return serveTranslationUnit(ramTranslationUnit, numThreadsOrZero);
         }
         Own<interpreter::Engine> interpreter(mk<interpreter::Engine>(ramTranslationUnit, numThreadsOrZero));
@@ -767,6 +904,10 @@ std::vector<MainOption> getMainOptions() {
           "Interpret the program once per line `FACT-DIR<TAB>OUTPUT-DIR` read from standard "
           "input, as if run with -F FACT-DIR -D OUTPUT-DIR, parsing and translating it only "
           "once."},
+      {"serve-deferred-output", nextOptChar++, "", "", false,
+          "With --serve, also accept requests `FACT-DIR<TAB>OUTPUT-DIR<TAB>defer=NAMES` that write only "
+          "the listed output relations (possibly none) and keep the others, and the request `DUMP` "
+          "that writes the kept outputs to the last request's OUTPUT-DIR."},
       {"show", nextOptChar++, "[ <see-list> ]", "", true,
           "Print selected program information.\n"
           "Modes:\n"
@@ -899,6 +1040,11 @@ int main(Global& glb, const char* souffle_executable) {
 
         if (glb.config().has("live-profile") && !glb.config().has("profile")) {
             glb.config().set("profile");
+        }
+
+        if (glb.config().has("serve-deferred-output") && !glb.config().has("serve")) {
+            std::cerr << "--serve-deferred-output requires --serve" << std::endl;
+            exit(EXIT_FAILURE);
         }
 
         if (glb.config().has("serve")) {

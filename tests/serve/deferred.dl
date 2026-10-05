@@ -1,0 +1,34 @@
+// Outputs are consumed by later relations, so they expire (are purged) mid-program.
+.type R = [a:number, b:symbol]
+.type A = N {x:number} | S {s:symbol}
+.decl a(x:number)
+.input a
+.decl b(x:number)
+.output b
+.decl c(x:number)
+.output c
+.decl d(x:number)
+.output d
+b(x+1) :- a(x).
+c(x*10) :- b(x).
+d(x) :- c(x), x > 20.
+.decl e(x:symbol,y:symbol)
+.input e
+.decl p(x:symbol,y:symbol)
+.output p
+.output p(IO=file, filename="p2.csv", delimiter=";")
+p(x,y) :- e(x,y).
+p(x,z) :- p(x,y), e(y,z).
+.decl q(x:symbol,y:symbol)
+.output q
+q(x,y) :- p(x,y), x = y.
+.decl rec(r:R)
+.output rec
+rec([x,"s"]) :- a(x).
+.decl adt(v:A)
+.output adt
+adt($N(x)) :- a(x).
+adt($S(y)) :- e(y,_).
+.decl last(n:number)
+.output last
+last(n) :- d(n), n > 30.
