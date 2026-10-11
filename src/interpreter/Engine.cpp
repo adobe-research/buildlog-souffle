@@ -306,8 +306,8 @@ Engine::Engine(ram::TranslationUnit& tUnit, const std::size_t numberOfThreadsOrZ
         : tUnit(tUnit), global(tUnit.global()), profileEnabled(global.config().has("profile")),
           frequencyCounterEnabled(global.config().has("profile-frequency")),
           numOfThreads(number_of_threads(numberOfThreadsOrZero)),
-          isa(tUnit.getAnalysis<ram::analysis::IndexAnalysis>()), recordTable(numOfThreads),
-          symbolTable(numOfThreads), regexCache(numOfThreads) {}
+          isa(tUnit.getAnalysis<ram::analysis::IndexAnalysis>()), recordTable(mk<RecordTableImpl>(numOfThreads)),
+          symbolTable(mk<SymbolTableImpl>(numOfThreads)), regexCache(numOfThreads) {}
 
 void Engine::redirectIO(std::string factDir, std::string outputDir) {
     ioRedirect = std::make_pair(std::move(factDir), std::move(outputDir));
@@ -366,11 +366,11 @@ Global& Engine::getGlobal() {
 }
 
 SymbolTable& Engine::getSymbolTable() {
-    return symbolTable;
+    return *symbolTable;
 }
 
 RecordTable& Engine::getRecordTable() {
-    return recordTable;
+    return *recordTable;
 }
 
 ram::TranslationUnit& Engine::getTranslationUnit() {
@@ -483,6 +483,18 @@ void Engine::executeMain() {
 
     generateIR();
     assert(main != nullptr && "Executing an empty program");
+    if (!executed) {
+        executed = true;
+        std::vector<std::pair<std::size_t, std::string>> byIndex;
+        for (const auto& [symbol, index] : *symbolTable) {
+            byIndex.emplace_back(index, symbol);
+        }
+        std::sort(byIndex.begin(), byIndex.end());
+        for (auto& [index, symbol] : byIndex) {
+            assert(index == generatedSymbols.size() && "generated symbols are not numbered consecutively");
+            generatedSymbols.push_back(std::move(symbol));
+        }
+    }
 
     if (!profileEnabled) {
         Context ctxt;
@@ -537,6 +549,28 @@ void Engine::executeMain() {
         }
     }
     SignalHandler::instance()->reset();
+}
+
+void Engine::reset() {
+    if (!executed) {
+        return;
+    }
+    for (auto& rel : relations) {
+        (*rel)->purge();
+    }
+    recordTable = mk<RecordTableImpl>(numOfThreads);
+    symbolTable = mk<SymbolTableImpl>(numOfThreads);
+    for (std::size_t i = 0; i < generatedSymbols.size(); ++i) {
+        [[maybe_unused]] const RamDomain index = symbolTable->encode(generatedSymbols[i]);
+        assert(static_cast<std::size_t>(index) == i && "symbol numbering differs after reset");
+    }
+    counter = 0;
+    iteration = 0;
+    ioRedirect.reset();
+    immediateOutputs.reset();
+    deferredOutputs.clear();
+    deferredRelations.clear();
+    deferredDumped = false;
 }
 
 void Engine::generateIR() {

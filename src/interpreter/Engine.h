@@ -66,6 +66,15 @@ public:
     void executeMain();
 
     /**
+     * @brief Return a used engine to the state of a freshly constructed one whose IR has been
+     * generated, so that executeMain() can run again: every relation is emptied, counters
+     * and the I/O redirection are cleared, and the symbol and record tables hold exactly
+     * what IR generation put into them. The generated IR is kept. No-op before the first
+     * executeMain().
+     */
+    void reset();
+
+    /**
      * @brief Read inputs from `factDir` and write outputs to `outputDir`
      * instead of the directories given on the command line (-F, -D).
      * Directives that name a directory of their own are unaffected.
@@ -231,11 +240,15 @@ private:
     /** IndexAnalysis */
     ram::analysis::IndexAnalysis& isa;
     /** Record Table Implementation*/
-    SpecializedRecordTable<0, 1, 2, 3, 4, 5, 6, 7, 8, 9> recordTable;
+    using RecordTableImpl = SpecializedRecordTable<0, 1, 2, 3, 4, 5, 6, 7, 8, 9>;
+    Own<RecordTableImpl> recordTable;
     /** Symbol table for relations */
     VecOwn<RelationHandle> relations;
     /** Symbol table */
-    SymbolTableImpl symbolTable;
+    Own<SymbolTableImpl> symbolTable;
+    /** Symbols interned by IR generation, by index; restored by reset() */
+    std::vector<std::string> generatedSymbols;
+    bool executed = false;
     /** A cache for regexes */
     ConcurrentCache<std::string, std::regex> regexCache;
 };

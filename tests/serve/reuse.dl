@@ -1,0 +1,47 @@
+.type R = [a:number, b:symbol]
+.type T = Leaf {x:number} | Node {l:T, r:T}
+
+.decl edge(x:symbol, y:symbol)
+.input edge
+.decl removed(x:symbol)
+.input removed
+.decl nums(n:number)
+.input nums
+
+.decl path(x:symbol, y:symbol)
+path(x, y) :- edge(x, y).
+path(x, z) :- path(x, y), edge(y, z).
+
+// negation across strata
+.decl live(x:symbol)
+live(x) :- edge(x, _), !removed(x).
+.decl reach(x:symbol, y:symbol)
+reach(x, y) :- path(x, y), live(x), !removed(y).
+
+.decl total(s:number, c:number)
+total(s, c) :- s = sum n : nums(n), c = count : nums(_).
+.decl biggest(m:number)
+biggest(m) :- m = max n : nums(n).
+
+.decl rec(r:R)
+rec([n, y]) :- nums(n), edge(_, y).
+.decl tree(t:T, depth:number)
+tree($Leaf(n), 0) :- nums(n).
+tree($Node(a, b), d + 1) :- tree(a, d), tree(b, d), a != b, d < 1.
+
+.decl ids(x:symbol, i:number)
+ids(x, autoinc()) :- live(x).
+
+.decl words(w:symbol)
+words(cat(x, "!")) :- live(x).
+words("constant").
+
+.output path
+.output reach
+.output total
+.output biggest
+.output rec
+.output tree
+.output ids
+.output words
+.output live

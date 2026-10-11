@@ -13,3 +13,10 @@ add_test(NAME serve_mode
 add_test(NAME serve_deferred_output
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/deferred_test.py
         $<TARGET_FILE:souffle> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/serve_deferred)
+
+# Repeated requests on one engine (and deferred/memoised variants) must equal fresh runs.
+foreach(variant plain deferred)
+    add_test(NAME serve_reuse_${variant}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reuse_test.py
+            $<TARGET_FILE:souffle> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/serve_reuse_${variant} ${variant})
+endforeach()

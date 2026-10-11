@@ -566,12 +566,14 @@ Own<ram::transform::Transformer> ramTransformerSequence(Global& glb) {
 /**
  * Evaluate the translated program once per request line read from standard
  * input, `FACT-DIR<TAB>OUTPUT-DIR`, each time as a fresh run of the program
- * with -F FACT-DIR -D OUTPUT-DIR would: a new engine with empty relations and
- * symbol table. The program is parsed, checked and translated once. Prints
+ * with -F FACT-DIR -D OUTPUT-DIR would: the one engine is reset to empty relations and
+ * the symbol table its IR generation left. The program is parsed, checked and translated once. Prints
  * `souffle-serve: ready` when the first request can be read, and
  * `souffle-serve: done SECONDS` after each evaluation. Exits at end of input.
  */
 static bool serveTranslationUnit(ram::TranslationUnit& ramTranslationUnit, std::size_t numThreadsOrZero) {
+    // One engine serves every request: the IR is generated once and reset() restores the fresh state.
+    interpreter::Engine engine(ramTranslationUnit, numThreadsOrZero);
     std::cout << "souffle-serve: ready" << std::endl;
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -586,11 +588,9 @@ static bool serveTranslationUnit(ram::TranslationUnit& ramTranslationUnit, std::
             return false;
         }
         const auto start = std::chrono::high_resolution_clock::now();
-        {
-            interpreter::Engine engine(ramTranslationUnit, numThreadsOrZero);
-            engine.redirectIO(line.substr(0, tab), outputDir);
-            engine.executeMain();
-        }
+        engine.reset();
+        engine.redirectIO(line.substr(0, tab), outputDir);
+        engine.executeMain();
         const auto end = std::chrono::high_resolution_clock::now();
         std::cout << "souffle-serve: done " << std::chrono::duration<double>(end - start).count()
                   << std::endl;
@@ -609,8 +609,7 @@ static bool serveTranslationUnit(ram::TranslationUnit& ramTranslationUnit, std::
  *                                              `souffle-serve: dumped SECONDS`
  * Only plain CSV file outputs can be deferred. Deferral keeps output relations from being purged
  * at expiry; it is verified for ordinary translated programs, including subsumption.
- * Any new request, or end of input, destroys the retained engine; DUMP releases it before
- * replying. Any protocol misuse is reported on standard error and fails the server.
+ * Any new request discards the kept outputs, as does DUMP once it has written them. Any protocol misuse is reported on standard error and fails the server.
  */
 static bool serveDeferredTranslationUnit(
         ram::TranslationUnit& ramTranslationUnit, std::size_t numThreadsOrZero) {
@@ -634,26 +633,27 @@ static bool serveDeferredTranslationUnit(
     };
 
     std::cout << "souffle-serve: ready" << std::endl;
-    Own<interpreter::Engine> retained;
+    interpreter::Engine engine(ramTranslationUnit, numThreadsOrZero);
+    bool retained = false;
     bool dumped = false;
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line == "DUMP") {
-            if (retained == nullptr) {
+            if (!retained) {
                 std::cerr << "souffle-serve: DUMP without deferred outputs"
                           << (dumped ? " (already dumped)" : "") << std::endl;
                 return false;
             }
             const auto start = std::chrono::high_resolution_clock::now();
-            retained->dumpDeferred();
-            retained.reset();
+            engine.dumpDeferred();
+            retained = false;
             const auto end = std::chrono::high_resolution_clock::now();
             dumped = true;
             std::cout << "souffle-serve: dumped " << std::chrono::duration<double>(end - start).count()
                       << std::endl;
             continue;
         }
-        retained.reset();
+        retained = false;
         dumped = false;
 
         const std::size_t tab = line.find('\t');
@@ -712,17 +712,13 @@ static bool serveDeferredTranslationUnit(
         }
 
         const auto start = std::chrono::high_resolution_clock::now();
-        auto engine = mk<interpreter::Engine>(ramTranslationUnit, numThreadsOrZero);
-        engine->redirectIO(line.substr(0, tab), outputDir);
+        engine.reset();
+        engine.redirectIO(line.substr(0, tab), outputDir);
         if (defer) {
-            engine->deferOutputsExcept(std::move(immediate));
+            engine.deferOutputsExcept(std::move(immediate));
         }
-        engine->executeMain();
-        if (defer) {
-            retained = std::move(engine);
-        } else {
-            engine.reset();
-        }
+        engine.executeMain();
+        retained = defer;
         const auto end = std::chrono::high_resolution_clock::now();
         std::cout << "souffle-serve: done " << std::chrono::duration<double>(end - start).count()
                   << std::endl;
