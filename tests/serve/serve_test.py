@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 Adobe. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Check that `souffle --serve` evaluates each request exactly as a separate
 `souffle -F FACTS -D OUT` run would, including when requests repeat."""
 

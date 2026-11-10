@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright 2026 Adobe. All rights reserved. (modifications)
+# SPDX-License-Identifier: UPL-1.0 AND Apache-2.0
+# Adobe modifications are licensed under Apache-2.0.
+
 # Souffle - A Datalog Compiler
 # Copyright (c) 2021 The Souffle Developers. All rights reserved
 # Licensed under the Universal Permissive License v 1.0 as shown at:

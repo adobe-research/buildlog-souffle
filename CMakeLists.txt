@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright 2026 Adobe. All rights reserved. (modifications)
+# SPDX-License-Identifier: UPL-1.0 AND Apache-2.0
+# Adobe modifications are licensed under Apache-2.0.
+
 # Souffle - A Datalog Compiler
 # Copyright (c) 2021 The Souffle Developers. All rights reserved
 # Licensed under the Universal Permissive License v 1.0 as shown at:
@@ -437,6 +441,17 @@ IF (SOUFFLE_BASH_COMPLETION)
 endif()
 
 
+install(
+    FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/NOTICE"
+    DESTINATION share/doc/souffle
+    COMPONENT licenses
+)
+install(
+    DIRECTORY "${PROJECT_SOURCE_DIR}/licenses/"
+    DESTINATION share/doc/souffle/licenses
+    COMPONENT licenses
+)
+
 if (NOT WIN32)
 # --------------------------------------------------
 # CPack configuration
@@ -479,7 +494,7 @@ if (CHECK_OS_RESULT EQUAL 0)
 
     if (CHECK_OS_OUTPUT MATCHES "FEDORA")
       SET(CPACK_RPM_PACKAGE_GROUP "Unspecified")
-      SET(CPACK_RPM_PACKAGE_LICENSE "UPL-1.0 License")
+      SET(CPACK_RPM_PACKAGE_LICENSE "UPL-1.0 AND Apache-2.0")
       SET(CPACK_RPM_PACKAGE_VENDOR "Souffle-lang")
       SET(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
 

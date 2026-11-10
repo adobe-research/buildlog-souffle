@@ -1,8 +1,8 @@
 // Souffle - A Datalog Compiler
 // Copyright (c) 2026 The Souffle Developers. All rights reserved
-// Licensed under the Universal Permissive License v 1.0 as shown at:
-// - https://opensource.org/licenses/UPL
-// - <souffle root>/licenses/SOUFFLE-UPL.txt
+// Licensed under the Apache License, Version 2.0; see REUSE.toml.
+// - https://www.apache.org/licenses/LICENSE-2.0
+// - <souffle root>/licenses/Apache-2.0.txt
 
 // This code tests that query prints symbol solutions as string literals, so
 // symbols containing separators, quotes or spaces are not ambiguous.

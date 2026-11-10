@@ -1,0 +1,14 @@
+Adobe Research Souffle fork
+Copyright 2026 Adobe. All rights reserved.
+
+Adobe's modifications and fork-specific files are licensed under the Apache
+License, Version 2.0. See licenses/Apache-2.0.txt.
+
+This fork incorporates Souffle, which remains licensed under the Universal
+Permissive License, Version 1.0. Existing upstream copyright and license
+notices are preserved. See LICENSE and licenses/SOUFFLE-UPL.txt.
+
+For files containing both upstream code and Adobe modifications, the UPL
+applies to the upstream portions and Apache-2.0 applies to Adobe's
+modifications. The SPDX expression "UPL-1.0 AND Apache-2.0" records both
+applicable licenses; it does not offer a choice of licenses.

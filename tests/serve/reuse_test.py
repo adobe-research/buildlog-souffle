@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 Adobe. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Each request served by one long-lived `souffle --serve` process (optionally with deferred
 output and/or stratum memoisation) must produce byte-identical outputs to a separate
 `souffle -F FACTS -D OUT` run, whatever requests came before: inputs that shrink, grow,

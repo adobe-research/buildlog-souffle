@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2026 Adobe. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Check `souffle --serve --serve-deferred-output`: deferred outputs written by DUMP must equal
 a standalone run, the legacy protocol must be unchanged, and misuse must fail explicitly."""
 
